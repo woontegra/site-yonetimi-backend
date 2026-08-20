@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Kiracı / site. Tüm iş verileri ileride bu kayda bağlanır.
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  buildings   Building[]
+
+  @@map("tenants")
+}
+
+model User {
+  id               String   @id @default(uuid())
+  email            String   @unique
+  passwordHash     String
+  fullName         String
+  isActive         Boolean  @default(true)
+  /// SaaS işletmecisi (platform) erişimi için ayrıldı; bu fazda kullanılmaz.
+  isPlatformAdmin  Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  memberships Membership[]
+
+  @@map("users")
+}
+
+/// Kullanıcının bir site/tenant içindeki rolü.
+enum UserRole {
+  SITE_YONETICISI
+  YONETIM_PERSONELI
+  MUHASEBE_PERSONELI
+  SINIRLI_YETKILI
+}
+
+model Membership {
+  id        String   @id @default(uuid())
+  userId    String
+  tenantId  String
+  role      UserRole @default(SITE_YONETICISI)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@map("memberships")
+}
+
+model Building {
+  id             String    @id @default(uuid())
+  tenantId       String
+  name           String
+  code           String?
+  address        String?
+  city           String?
+  district       String?
+  apartmentCount Int
+  floorCount     Int
+  description    String?
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, name])
+  @@map("buildings")
+}
