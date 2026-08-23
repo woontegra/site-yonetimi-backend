@@ -10,6 +10,9 @@ declare global {
         email: string;
         tenantId: string | null;
         role: UserRole | null;
+        siteId?: string | null;
+        siteIsActive?: boolean | null;
+        isPlatformAdmin?: boolean;
       };
     }
   }

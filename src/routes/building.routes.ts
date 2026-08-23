@@ -7,11 +7,12 @@ import {
   updateBuilding,
 } from "../controllers/building.controller";
 import { requireAuth } from "../middleware/auth";
+import { requireSite } from "../middleware/site";
 import { requireTenant } from "../middleware/tenant";
 
 export const buildingRouter = Router();
 
-buildingRouter.use(requireAuth, requireTenant);
+buildingRouter.use(requireAuth, requireTenant, requireSite);
 
 buildingRouter.get("/", listBuildings);
 buildingRouter.get("/:id", getBuilding);

@@ -1,0 +1,90 @@
+import type { NextFunction, Request, Response } from "express";
+import { assertSiteActive, siteIdFrom } from "../middleware/site";
+import { siteService } from "../services/site.service";
+import { HttpError } from "../utils/httpError";
+import {
+  createSiteSchema,
+  listSitesQuerySchema,
+  updateSiteSchema,
+} from "../validators/site.validators";
+
+function tenantIdFrom(req: Request): string {
+  const tenantId = req.auth?.tenantId;
+  if (!tenantId) {
+    throw new HttpError(400, "Aktif hesap seçilmedi.");
+  }
+  return tenantId;
+}
+
+function firstZodMessage(error: { issues: Array<{ message: string }> }): string {
+  return error.issues[0]?.message ?? "Geçersiz istek.";
+}
+
+export async function listSites(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = listSitesQuerySchema.safeParse(req.query);
+    if (!parsed.success) {
+      throw new HttpError(400, firstZodMessage(parsed.error));
+    }
+    const result = await siteService.list(tenantIdFrom(req), parsed.data);
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listActiveSites(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const items = await siteService.listActive(tenantIdFrom(req));
+    res.status(200).json({ items });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getSite(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const site = await siteService.getById(tenantIdFrom(req), String(req.params.id));
+    res.status(200).json({ site });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function createSite(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = createSiteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new HttpError(400, firstZodMessage(parsed.error));
+    }
+    const site = await siteService.create(tenantIdFrom(req), parsed.data);
+    res.status(201).json({ site });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateSite(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = updateSiteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new HttpError(400, firstZodMessage(parsed.error));
+    }
+    const site = await siteService.update(tenantIdFrom(req), String(req.params.id), parsed.data);
+    res.status(200).json({ site });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteSite(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await siteService.softDelete(tenantIdFrom(req), String(req.params.id));
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Building create için site aktiflik kontrolü yardımcısı — controller'larda kullanılır. */
+export { assertSiteActive, siteIdFrom };

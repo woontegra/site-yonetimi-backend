@@ -22,7 +22,7 @@ export async function requireTenant(
       req.auth.tenantId;
 
     if (!tenantId) {
-      throw new HttpError(400, "Aktif site seçilmedi.");
+      throw new HttpError(400, "Aktif hesap seçilmedi.");
     }
 
     const membership = await prisma.membership.findUnique({
@@ -35,7 +35,7 @@ export async function requireTenant(
     });
 
     if (!membership) {
-      throw new HttpError(403, "Bu siteye erişim yetkiniz yok.");
+      throw new HttpError(403, "Bu hesaba erişim yetkiniz yok.");
     }
 
     req.auth.tenantId = tenantId;

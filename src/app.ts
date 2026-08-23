@@ -14,6 +14,17 @@ export function createApp() {
       credentials: true,
     }),
   );
+
+  app.use(
+    "/api/webhooks/whatsapp",
+    express.json({
+      limit: "1mb",
+      verify: (req, _res, buf) => {
+        (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+      },
+    }),
+  );
+
   app.use(express.json({ limit: "1mb" }));
 
   app.use("/api", apiRouter);

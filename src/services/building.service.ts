@@ -5,6 +5,7 @@ import type { CreateBuildingInput, ListBuildingsQuery, UpdateBuildingInput } fro
 
 const buildingSelect = {
   id: true,
+  siteId: true,
   name: true,
   code: true,
   address: true,
@@ -16,12 +17,28 @@ const buildingSelect = {
   isActive: true,
   createdAt: true,
   updatedAt: true,
+  _count: {
+    select: {
+      apartments: {
+        where: { deletedAt: null },
+      },
+    },
+  },
 } as const;
 
+function mapBuilding<T extends { _count: { apartments: number } }>(row: T) {
+  const { _count, ...building } = row;
+  return {
+    ...building,
+    registeredApartmentCount: _count.apartments,
+  };
+}
+
 export class BuildingService {
-  async list(tenantId: string, query: ListBuildingsQuery) {
+  async list(tenantId: string, siteId: string, query: ListBuildingsQuery) {
     const where: Prisma.BuildingWhereInput = {
       tenantId,
+      siteId,
       deletedAt: null,
     };
 
@@ -53,16 +70,16 @@ export class BuildingService {
     ]);
 
     return {
-      items,
+      items: items.map(mapBuilding),
       page: query.page,
       perPage: query.perPage,
       total,
     };
   }
 
-  async getById(tenantId: string, id: string) {
+  async getById(tenantId: string, siteId: string, id: string) {
     const building = await prisma.building.findFirst({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, tenantId, siteId, deletedAt: null },
       select: buildingSelect,
     });
 
@@ -70,31 +87,34 @@ export class BuildingService {
       throw new HttpError(404, "Bina bulunamadı.");
     }
 
-    return building;
+    return mapBuilding(building);
   }
 
-  async create(tenantId: string, input: CreateBuildingInput) {
-    return prisma.building.create({
-      data: {
-        tenantId,
-        name: input.name,
-        code: input.code,
-        address: input.address,
-        city: input.city,
-        district: input.district,
-        description: input.description,
-        apartmentCount: input.apartmentCount,
-        floorCount: input.floorCount,
-      },
-      select: buildingSelect,
-    });
+  async create(tenantId: string, siteId: string, input: CreateBuildingInput) {
+    return mapBuilding(
+      await prisma.building.create({
+        data: {
+          tenantId,
+          siteId,
+          name: input.name,
+          code: input.code,
+          address: input.address,
+          city: input.city,
+          district: input.district,
+          description: input.description,
+          apartmentCount: input.apartmentCount ?? null,
+          floorCount: input.floorCount ?? null,
+        },
+        select: buildingSelect,
+      }),
+    );
   }
 
-  async update(tenantId: string, id: string, input: UpdateBuildingInput) {
-    await this.getById(tenantId, id);
+  async update(tenantId: string, siteId: string, id: string, input: UpdateBuildingInput) {
+    await this.getById(tenantId, siteId, id);
 
     await prisma.building.updateMany({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, tenantId, siteId, deletedAt: null },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.code !== undefined ? { code: input.code } : {}),
@@ -104,17 +124,18 @@ export class BuildingService {
         ...(input.description !== undefined ? { description: input.description } : {}),
         ...(input.apartmentCount !== undefined ? { apartmentCount: input.apartmentCount } : {}),
         ...(input.floorCount !== undefined ? { floorCount: input.floorCount } : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
       },
     });
 
-    return this.getById(tenantId, id);
+    return this.getById(tenantId, siteId, id);
   }
 
-  async remove(tenantId: string, id: string) {
-    await this.assertCanDelete(tenantId, id);
+  async remove(tenantId: string, siteId: string, id: string) {
+    await this.getById(tenantId, siteId, id);
 
     const result = await prisma.building.updateMany({
-      where: { id, tenantId, deletedAt: null },
+      where: { id, tenantId, siteId, deletedAt: null },
       data: {
         deletedAt: new Date(),
         isActive: false,
@@ -124,14 +145,6 @@ export class BuildingService {
     if (result.count === 0) {
       throw new HttpError(404, "Bina bulunamadı.");
     }
-  }
-
-  /**
-   * İleride binaya bağlı daire kaydı olduğunda buraya güvenli kontrol eklenecek.
-   * Bu fazda apartmentCount beyan alanıdır; gerçek daire ilişkisi yoktur.
-   */
-  private async assertCanDelete(tenantId: string, id: string) {
-    await this.getById(tenantId, id);
   }
 }
 

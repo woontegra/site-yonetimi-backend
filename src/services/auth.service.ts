@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import { prisma } from "../lib/prisma";
 import { signAccessToken } from "../lib/jwt";
+import { grantPlatformAdminIfListed } from "./platform-admin.service";
 import { HttpError } from "../utils/httpError";
 
 export type PublicUser = {
@@ -36,19 +37,29 @@ export class AuthService {
       throw new HttpError(401, "E-posta veya şifre hatalı.");
     }
 
-    const activeMemberships = user.memberships.filter((item) => item.tenant.isActive);
+    await grantPlatformAdminIfListed(user.email);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+    const refreshed = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      include: { memberships: { include: { tenant: true } } },
+    });
+
+    const activeMemberships = refreshed.memberships.filter((item) => item.tenant.isActive);
     const primary = activeMemberships[0] ?? null;
 
     const token = signAccessToken({
-      sub: user.id,
-      email: user.email,
+      sub: refreshed.id,
+      email: refreshed.email,
       tenantId: primary?.tenantId ?? null,
       role: primary?.role ?? null,
     });
 
     return {
       token,
-      user: this.toPublicUser(user, activeMemberships),
+      user: this.toPublicUser(refreshed, activeMemberships),
     };
   }
 
@@ -111,19 +122,29 @@ export class AuthService {
       });
     }
 
-    const activeMemberships = user.memberships.filter((item) => item.tenant.isActive);
+    await grantPlatformAdminIfListed(user.email);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+    const refreshed = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      include: { memberships: { include: { tenant: true } } },
+    });
+
+    const activeMemberships = refreshed.memberships.filter((item) => item.tenant.isActive);
     const primary = activeMemberships.find((item) => item.tenantId === tenant.id) ?? activeMemberships[0] ?? null;
 
     const token = signAccessToken({
-      sub: user.id,
-      email: user.email,
+      sub: refreshed.id,
+      email: refreshed.email,
       tenantId: primary?.tenantId ?? tenant.id,
       role: primary?.role ?? "SITE_YONETICISI",
     });
 
     return {
       token,
-      user: this.toPublicUser(user, activeMemberships),
+      user: this.toPublicUser(refreshed, activeMemberships),
     };
   }
 
@@ -141,8 +162,14 @@ export class AuthService {
       throw new HttpError(401, "Oturum geçersiz.");
     }
 
-    const activeMemberships = user.memberships.filter((item) => item.tenant.isActive);
-    return this.toPublicUser(user, activeMemberships);
+    await grantPlatformAdminIfListed(user.email);
+    const refreshed = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      include: { memberships: { include: { tenant: true } } },
+    });
+
+    const activeMemberships = refreshed.memberships.filter((item) => item.tenant.isActive);
+    return this.toPublicUser(refreshed, activeMemberships);
   }
 
   private toPublicUser(

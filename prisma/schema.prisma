@@ -7,7 +7,7 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Kiracı / site. Tüm iş verileri ileride bu kayda bağlanır.
+/// Müşteri / yönetim hesabı. Tenant güvenlik sınırıdır; Site ile karıştırılmaz.
 model Tenant {
   id        String   @id @default(uuid())
   name      String
@@ -16,8 +16,47 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  buildings   Building[]
+  memberships               Membership[]
+  subscription              Subscription?
+  adminNotes                AdminNote[]
+  adminAuditLogs            AdminAuditLog[]
+  buildings                 Building[]
+  apartments                Apartment[]
+  persons                   Person[]
+  apartmentPersonRelations  ApartmentPersonRelation[]
+  duesDefinitions           DuesDefinition[]
+  apartmentDebts            ApartmentDebt[]
+  payments                  Payment[]
+  paymentAllocations        PaymentAllocation[]
+  paymentIdempotencyKeys    PaymentIdempotencyKey[]
+  expenseTypes              ExpenseType[]
+  expenses                  Expense[]
+  bankAccounts              BankAccount[]
+  bankTransactions          BankTransaction[]
+  bankMatchingRules         BankMatchingRule[]
+  suppliers                 Supplier[]
+  employees                 Employee[]
+  employeeAssignments       EmployeeAssignment[]
+  visitors                  Visitor[]
+  visits                    Visit[]
+  sites                     Site[]
+  assetCategories           AssetCategory[]
+  assets                    Asset[]
+  assetMovements            AssetMovement[]
+  assetMaintenances         AssetMaintenance[]
+  announcements             Announcement[]
+  announcementBuildings     AnnouncementBuilding[]
+  announcementApartments    AnnouncementApartment[]
+  feedbackCategories        FeedbackCategory[]
+  feedbackRecords           FeedbackRecord[]
+  feedbackStatusHistories   FeedbackStatusHistory[]
+  messageTemplates          MessageTemplate[]
+  communicationBatches      CommunicationBatch[]
+  communicationMessages     CommunicationMessage[]
+  communicationIdempotencyKeys CommunicationIdempotencyKey[]
+  whatsAppIntegrations      WhatsAppIntegration[]
+  whatsAppTemplates         WhatsAppTemplate[]
+  emailDeliveries           EmailDelivery[]
 
   @@map("tenants")
 }
@@ -28,12 +67,19 @@ model User {
   passwordHash     String
   fullName         String
   isActive         Boolean  @default(true)
-  /// SaaS işletmecisi (platform) erişimi için ayrıldı; bu fazda kullanılmaz.
+  /// Platform operatör yetkisi. Tenant UserRole ile karıştırılmaz.
   isPlatformAdmin  Boolean  @default(false)
+  lastLoginAt      DateTime?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  memberships Membership[]
+  memberships    Membership[]
+  announcements  Announcement[]
+  adminNotes     AdminNote[]
+  adminAuditLogs AdminAuditLog[]
+  activationTokens UserActivationToken[]
+  emailDeliveries  EmailDelivery[]
+  platformEmailUpdates PlatformEmailIntegration[]
 
   @@map("users")
 }
@@ -62,25 +108,1324 @@ model Membership {
   @@map("memberships")
 }
 
+enum SiteSetupStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+/// Yönetilen site / yerleşke. Tenant altında birden fazla olabilir.
+model Site {
+  id               String          @id @default(uuid())
+  tenantId         String
+  name             String
+  code             String?
+  address          String?
+  city             String?
+  district         String?
+  description      String?
+  isActive         Boolean         @default(true)
+  setupStatus      SiteSetupStatus @default(NOT_STARTED)
+  setupCompletedAt DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  deletedAt        DateTime?
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  buildings           Building[]
+  expenses            Expense[]
+  bankAccounts        BankAccount[]
+  bankMatchingRules   BankMatchingRule[]
+  employeeAssignments EmployeeAssignment[]
+  assets              Asset[]
+  assetMovements      AssetMovement[]
+  assetMaintenances   AssetMaintenance[]
+  announcements       Announcement[]
+  feedbackRecords     FeedbackRecord[]
+  feedbackStatusHistories FeedbackStatusHistory[]
+  communicationBatches    CommunicationBatch[]
+  communicationMessages   CommunicationMessage[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, isActive])
+  @@index([tenantId, name])
+  @@map("sites")
+}
+
 model Building {
   id             String    @id @default(uuid())
   tenantId       String
+  siteId         String
   name           String
   code           String?
   address        String?
   city           String?
   district       String?
-  apartmentCount Int
-  floorCount     Int
+  apartmentCount Int?
+  floorCount     Int?
   description    String?
   isActive       Boolean   @default(true)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site                Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  apartments          Apartment[]
+  duesDefinitions     DuesDefinition[]
+  apartmentDebts      ApartmentDebt[]
+  expenses            Expense[]
+  bankMatchingRules   BankMatchingRule[]
+  employeeAssignments EmployeeAssignment[]
+  assets              Asset[]
+  movementsFrom       AssetMovement[]     @relation("AssetMovementFromBuilding")
+  movementsTo         AssetMovement[]     @relation("AssetMovementToBuilding")
+  announcementBuildings AnnouncementBuilding[]
+  feedbackRecords       FeedbackRecord[]
 
   @@index([tenantId, deletedAt])
+  @@index([siteId, deletedAt])
   @@index([tenantId, name])
   @@map("buildings")
 }
+
+model Apartment {
+  id            String    @id @default(uuid())
+  tenantId      String
+  buildingId    String
+  number        String
+  floor         String?
+  roomType      String?
+  squareMeters  Float?
+  hasBalcony    Boolean?
+  isActive      Boolean   @default(true)
+  description   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  building  Building                  @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  relations ApartmentPersonRelation[]
+  debts     ApartmentDebt[]
+  payments  Payment[]
+  matchedBankTransactions BankTransaction[] @relation("BankTxMatchedApartment")
+  bankMatchingRules       BankMatchingRule[]
+  visits                  Visit[]
+  announcementApartments  AnnouncementApartment[]
+  feedbackRecords         FeedbackRecord[]
+  communicationMessages   CommunicationMessage[]
+  assets                  Asset[]
+
+  @@index([tenantId, deletedAt])
+  @@index([buildingId, deletedAt])
+  @@index([buildingId, number])
+  @@map("apartments")
+}
+
+model Person {
+  id         String    @id @default(uuid())
+  tenantId   String
+  firstName  String
+  lastName   String
+  phone      String?
+  email      String?
+  /// Hassas alan; ileride şifreleme eklenebilir. Loglara yazılmaz.
+  nationalId String?
+  gender     String?
+  occupation String?
+  birthDate  DateTime?
+  note       String?
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  relations ApartmentPersonRelation[]
+  payments  Payment[]
+  matchedBankTransactions BankTransaction[] @relation("BankTxMatchedPerson")
+  bankMatchingRules       BankMatchingRule[]
+  hostedVisits            Visit[]
+  feedbackRecords         FeedbackRecord[]
+  communicationMessages   CommunicationMessage[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, lastName, firstName])
+  @@map("persons")
+}
+
+enum ApartmentRelationType {
+  OWNER
+  TENANT
+}
+
+model ApartmentPersonRelation {
+  id           String                @id @default(uuid())
+  tenantId     String
+  apartmentId  String
+  personId     String
+  relationType ApartmentRelationType
+  startDate    DateTime?
+  endDate      DateTime?
+  isPrimary    Boolean               @default(false)
+  isActive     Boolean               @default(true)
+  note         String?
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  person    Person    @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, isActive])
+  @@index([apartmentId, relationType, isActive])
+  @@index([personId, isActive])
+  @@map("apartment_person_relations")
+}
+
+/// Dönemsel aidat tanımı. Gerçek finansal kayıt ApartmentDebt'tir.
+model DuesDefinition {
+  id          String    @id @default(uuid())
+  tenantId    String
+  buildingId  String
+  name        String
+  amount      Decimal   @db.Decimal(12, 2)
+  periodYear  Int
+  periodMonth Int
+  dueDate     DateTime
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  building Building        @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  debts    ApartmentDebt[]
+
+  @@index([tenantId, deletedAt])
+  @@index([buildingId, periodYear, periodMonth])
+  @@map("dues_definitions")
+}
+
+enum ApartmentDebtType {
+  DUES
+  MANUAL
+}
+
+enum ApartmentDebtStatus {
+  OPEN
+  PAID
+  CANCELLED
+}
+
+/// Daireye yazılmış finansal borç kaydı.
+model ApartmentDebt {
+  id               String              @id @default(uuid())
+  tenantId         String
+  buildingId       String
+  apartmentId      String
+  duesDefinitionId String?
+  type             ApartmentDebtType
+  title            String
+  originalAmount   Decimal             @db.Decimal(12, 2)
+  remainingAmount  Decimal             @db.Decimal(12, 2)
+  dueDate          DateTime
+  periodYear       Int?
+  periodMonth      Int?
+  description      String?
+  status           ApartmentDebtStatus @default(OPEN)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  cancelledAt      DateTime?
+
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  building       Building            @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  apartment      Apartment           @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  duesDefinition DuesDefinition?     @relation(fields: [duesDefinitionId], references: [id], onDelete: SetNull)
+  allocations    PaymentAllocation[]
+  communicationMessages CommunicationMessage[]
+
+  @@unique([duesDefinitionId, apartmentId])
+  @@index([tenantId, status])
+  @@index([apartmentId, status])
+  @@index([buildingId, status])
+  @@index([periodYear, periodMonth])
+  @@map("apartment_debts")
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  OTHER
+}
+
+enum PaymentStatus {
+  COMPLETED
+  CANCELLED
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  tenantId      String
+  apartmentId   String
+  personId      String?
+  amount        Decimal       @db.Decimal(12, 2)
+  paymentDate   DateTime
+  paymentMethod PaymentMethod
+  referenceNo   String?
+  description   String?
+  status        PaymentStatus @default(COMPLETED)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  cancelledAt   DateTime?
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apartment   Apartment           @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  person      Person?             @relation(fields: [personId], references: [id], onDelete: SetNull)
+  allocations PaymentAllocation[]
+  bankTransaction BankTransaction?
+
+  @@index([tenantId, status])
+  @@index([apartmentId, status])
+  @@index([tenantId, paymentDate])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id              String   @id @default(uuid())
+  tenantId        String
+  paymentId       String
+  apartmentDebtId String
+  amount          Decimal  @db.Decimal(12, 2)
+  createdAt       DateTime @default(now())
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment       Payment       @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  apartmentDebt ApartmentDebt @relation(fields: [apartmentDebtId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([paymentId])
+  @@index([apartmentDebtId])
+  @@map("payment_allocations")
+}
+
+/// Aynı Idempotency-Key ile tekrarlayan POST payment isteklerini tekilleştirir.
+model PaymentIdempotencyKey {
+  id        String   @id @default(uuid())
+  tenantId  String
+  key       String
+  paymentId String
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@map("payment_idempotency_keys")
+}
+
+enum ExpenseStatus {
+  COMPLETED
+  CANCELLED
+}
+
+model ExpenseType {
+  id        String    @id @default(uuid())
+  tenantId  String
+  name      String
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, isActive, sortOrder])
+  @@map("expense_types")
+}
+
+/// Site yönetiminin yaptığı harcama kaydı. ApartmentDebt ile karıştırılmaz.
+model Expense {
+  id            String        @id @default(uuid())
+  tenantId      String
+  siteId        String
+  buildingId    String?
+  expenseTypeId String
+  supplierId    String?
+  title         String
+  amount        Decimal       @db.Decimal(12, 2)
+  expenseDate   DateTime
+  paymentMethod PaymentMethod
+  referenceNo   String?
+  description   String?
+  status        ExpenseStatus @default(COMPLETED)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  cancelledAt   DateTime?
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site        Site        @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building    Building?   @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  expenseType ExpenseType @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
+  supplier    Supplier?   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, expenseDate])
+  @@index([siteId, expenseDate])
+  @@index([buildingId])
+  @@index([expenseTypeId])
+  @@index([supplierId])
+  @@map("expenses")
+}
+
+model Supplier {
+  id            String    @id @default(uuid())
+  tenantId      String
+  name          String
+  contactPerson String?
+  phone         String?
+  email         String?
+  taxNumber     String?
+  taxOffice     String?
+  city          String?
+  district      String?
+  address       String?
+  note          String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  expenses Expense[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, isActive])
+  @@index([tenantId, name])
+  @@map("suppliers")
+}
+
+enum BankConnectionType {
+  MANUAL
+  API
+}
+
+enum BankTransactionDirection {
+  CREDIT
+  DEBIT
+}
+
+enum BankTransactionStatus {
+  ACTIVE
+  IGNORED
+}
+
+enum BankMatchStatus {
+  UNMATCHED
+  SUGGESTED
+  MATCHED
+  PROCESSED
+}
+
+model BankAccount {
+  id                String             @id @default(uuid())
+  tenantId          String
+  siteId            String
+  bankName          String
+  accountName       String
+  iban              String?
+  accountNumber     String?
+  branchName        String?
+  currency          String             @default("TRY")
+  openingBalance    Decimal            @db.Decimal(12, 2) @default(0)
+  currentBalance    Decimal?           @db.Decimal(12, 2)
+  isActive          Boolean            @default(true)
+  connectionType    BankConnectionType @default(MANUAL)
+  provider          String?
+  externalAccountId String?
+  lastSyncAt        DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  deletedAt         DateTime?
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site         Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  transactions BankTransaction[]
+  matchingRules BankMatchingRule[]
+
+  @@index([tenantId, deletedAt])
+  @@index([siteId, deletedAt])
+  @@index([tenantId, isActive])
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id                    String                   @id @default(uuid())
+  tenantId              String
+  bankAccountId         String
+  externalTransactionId String?
+  transactionDate       DateTime
+  valueDate             DateTime?
+  direction             BankTransactionDirection
+  amount                Decimal                  @db.Decimal(12, 2)
+  description           String
+  senderName            String?
+  senderIban            String?
+  referenceNo           String?
+  balanceAfter          Decimal?                 @db.Decimal(12, 2)
+  status                BankTransactionStatus    @default(ACTIVE)
+  matchStatus           BankMatchStatus          @default(UNMATCHED)
+  matchedApartmentId    String?
+  matchedPersonId       String?
+  paymentId             String?                  @unique
+  matchedAt             DateTime?
+  processedAt           DateTime?
+  ignoredAt             DateTime?
+  importedAt            DateTime                 @default(now())
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccount      BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  matchedApartment Apartment?   @relation("BankTxMatchedApartment", fields: [matchedApartmentId], references: [id], onDelete: SetNull)
+  matchedPerson    Person?      @relation("BankTxMatchedPerson", fields: [matchedPersonId], references: [id], onDelete: SetNull)
+  payment          Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, matchStatus])
+  @@index([bankAccountId, transactionDate])
+  @@index([tenantId, status])
+  @@index([externalTransactionId])
+  @@map("bank_transactions")
+}
+
+model BankMatchingRule {
+  id            String    @id @default(uuid())
+  tenantId      String
+  siteId        String
+  bankAccountId String?
+  name          String
+  containsText  String
+  buildingId    String?
+  apartmentId   String?
+  personId      String?
+  isActive      Boolean   @default(true)
+  priority      Int       @default(100)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site        Site         @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  building    Building?    @relation(fields: [buildingId], references: [id], onDelete: SetNull)
+  apartment   Apartment?   @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  person      Person?      @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, deletedAt, isActive])
+  @@index([siteId, deletedAt, isActive])
+  @@index([bankAccountId, isActive])
+  @@index([tenantId, priority])
+  @@map("bank_matching_rules")
+}
+
+/// Site personeli (kapıcı, güvenlik vb.). User hesabı ile aynı şey değildir.
+model Employee {
+  id               String    @id @default(uuid())
+  tenantId         String
+  firstName        String
+  lastName         String
+  phone            String?
+  email            String?
+  address          String?
+  jobTitle         String
+  hireDate         DateTime?
+  terminationDate  DateTime?
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignments     EmployeeAssignment[]
+  feedbackRecords FeedbackRecord[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, isActive])
+  @@index([tenantId, lastName, firstName])
+  @@map("employees")
+}
+
+model EmployeeAssignment {
+  id         String    @id @default(uuid())
+  tenantId   String
+  siteId     String
+  employeeId String
+  buildingId String?
+  startDate  DateTime?
+  endDate    DateTime?
+  isActive   Boolean   @default(true)
+  note       String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site     Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  employee Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  building Building? @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, employeeId])
+  @@index([siteId, isActive])
+  @@index([employeeId, isActive])
+  @@index([buildingId])
+  @@map("employee_assignments")
+}
+
+enum VisitStatus {
+  EXPECTED
+  INSIDE
+  COMPLETED
+  CANCELLED
+}
+
+model Visitor {
+  id         String    @id @default(uuid())
+  tenantId   String
+  firstName  String
+  lastName   String
+  phone      String?
+  /// Hassas alan; liste yanıtında varsayılan dönülmez. Loglara yazılmaz.
+  nationalId String?
+  note       String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  visits Visit[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, lastName, firstName])
+  @@map("visitors")
+}
+
+model Visit {
+  id            String      @id @default(uuid())
+  tenantId      String
+  visitorId     String
+  apartmentId   String
+  hostPersonId  String?
+  purpose       String?
+  vehiclePlate  String?
+  expectedAt    DateTime?
+  checkInAt     DateTime
+  checkOutAt    DateTime?
+  status        VisitStatus @default(INSIDE)
+  note          String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  cancelledAt   DateTime?
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  visitor    Visitor   @relation(fields: [visitorId], references: [id], onDelete: Restrict)
+  apartment  Apartment @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  hostPerson Person?   @relation(fields: [hostPersonId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([visitorId, status])
+  @@index([apartmentId, status])
+  @@index([tenantId, checkInAt])
+  @@map("visits")
+}
+
+enum AssetStatus {
+  ACTIVE
+  IN_MAINTENANCE
+  OUT_OF_SERVICE
+  LOST
+  SCRAPPED
+  DISPOSED
+}
+
+enum AssetMovementType {
+  CREATED
+  LOCATION_CHANGED
+  STATUS_CHANGED
+  QUANTITY_CHANGED
+  UPDATED
+}
+
+/// Demirbaş kategorisi (tenant seviyesi).
+model AssetCategory {
+  id          String    @id @default(uuid())
+  tenantId    String
+  name        String
+  description String?
+  isActive    Boolean   @default(true)
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assets Asset[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, isActive, sortOrder])
+  @@map("asset_categories")
+}
+
+/// Siteye ait demirbaş kaydı.
+model Asset {
+  id               String      @id @default(uuid())
+  tenantId         String
+  siteId           String
+  buildingId       String?
+  apartmentId      String?
+  assetCategoryId  String?
+  name             String
+  code             String?
+  quantity         Int         @default(1)
+  unit             String?
+  purchaseDate     DateTime?
+  purchasePrice    Decimal?    @db.Decimal(12, 2)
+  currentValue     Decimal?    @db.Decimal(12, 2)
+  supplierName     String?
+  location         String?
+  brand            String?
+  model            String?
+  serialNumber     String?
+  warrantyEndDate  DateTime?
+  status           AssetStatus @default(ACTIVE)
+  description      String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site      Site           @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building  Building?      @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  apartment Apartment?     @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  category  AssetCategory? @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
+  movements    AssetMovement[]
+  maintenances AssetMaintenance[]
+
+  @@index([tenantId, siteId, deletedAt])
+  @@index([siteId, status, deletedAt])
+  @@index([buildingId, deletedAt])
+  @@index([apartmentId])
+  @@index([assetCategoryId])
+  @@index([tenantId, name])
+  @@map("assets")
+}
+
+/// Demirbaş bakım / onarım kaydı (soft delete).
+model AssetMaintenance {
+  id                  String    @id @default(uuid())
+  tenantId            String
+  siteId              String
+  assetId             String
+  /// Serbest metin; arayüz hazır seçenekler sunar.
+  type                String
+  maintenanceDate     DateTime
+  description         String
+  cost                Decimal?  @db.Decimal(12, 2)
+  performedBy         String?
+  nextMaintenanceDate DateTime?
+  note                String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site   Site   @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  asset  Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId, maintenanceDate])
+  @@index([tenantId, siteId, deletedAt])
+  @@map("asset_maintenances")
+}
+
+/// Demirbaş hareket / geçmiş kaydı (silinmez).
+model AssetMovement {
+  id               String            @id @default(uuid())
+  tenantId         String
+  siteId           String
+  assetId          String
+  type             AssetMovementType
+  fromBuildingId   String?
+  toBuildingId     String?
+  fromLocation     String?
+  toLocation       String?
+  previousStatus   AssetStatus?
+  newStatus        AssetStatus?
+  previousQuantity Int?
+  newQuantity      Int?
+  note             String?
+  occurredAt       DateTime          @default(now())
+  createdAt        DateTime          @default(now())
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site         Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  fromBuilding Building? @relation("AssetMovementFromBuilding", fields: [fromBuildingId], references: [id], onDelete: SetNull)
+  toBuilding   Building? @relation("AssetMovementToBuilding", fields: [toBuildingId], references: [id], onDelete: SetNull)
+
+  @@index([assetId, occurredAt])
+  @@index([tenantId, siteId, occurredAt])
+  @@map("asset_movements")
+}
+
+enum AnnouncementAudienceType {
+  ALL_SITE
+  BUILDINGS
+  APARTMENTS
+}
+
+enum AnnouncementPriority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+enum AnnouncementStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+  CANCELLED
+}
+
+/// Site duyurusu. İletişim kanalları (WhatsApp/SMS/e-posta) ayrı fazda eklenecek.
+model Announcement {
+  id              String                    @id @default(uuid())
+  tenantId        String
+  siteId          String
+  title           String
+  content         String
+  audienceType    AnnouncementAudienceType
+  priority        AnnouncementPriority      @default(NORMAL)
+  status          AnnouncementStatus        @default(DRAFT)
+  publishAt       DateTime?
+  publishedAt     DateTime?
+  expiresAt       DateTime?
+  createdByUserId String?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  deletedAt       DateTime?
+
+  tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site            Site                     @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdByUser   User?                    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  buildings       AnnouncementBuilding[]
+  apartments      AnnouncementApartment[]
+
+  @@index([tenantId, siteId, deletedAt])
+  @@index([siteId, status, deletedAt])
+  @@index([tenantId, status, deletedAt])
+  @@index([siteId, publishedAt])
+  @@index([createdByUserId])
+  @@map("announcements")
+}
+
+model AnnouncementBuilding {
+  id             String   @id @default(uuid())
+  tenantId       String
+  announcementId String
+  buildingId     String
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  building     Building     @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+
+  @@unique([announcementId, buildingId])
+  @@index([tenantId, buildingId])
+  @@index([announcementId])
+  @@map("announcement_buildings")
+}
+
+model AnnouncementApartment {
+  id             String   @id @default(uuid())
+  tenantId       String
+  announcementId String
+  apartmentId    String
+  createdAt      DateTime @default(now())
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  apartment    Apartment    @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+
+  @@unique([announcementId, apartmentId])
+  @@index([tenantId, apartmentId])
+  @@index([announcementId])
+  @@map("announcement_apartments")
+}
+
+enum FeedbackType {
+  INFO
+  SUGGESTION
+  REQUEST
+  COMPLAINT
+}
+
+enum FeedbackPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum FeedbackStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+/// Tenant seviyesinde bilgi/öneri/talep/şikâyet kategorisi.
+model FeedbackCategory {
+  id        String    @id @default(uuid())
+  tenantId  String
+  name      String
+  isActive  Boolean   @default(true)
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  records FeedbackRecord[]
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, isActive, sortOrder])
+  @@map("feedback_categories")
+}
+
+/// Siteye ait bilgi / öneri / talep / şikâyet kaydı.
+model FeedbackRecord {
+  id           String           @id @default(uuid())
+  tenantId     String
+  siteId       String
+  buildingId   String?
+  apartmentId  String?
+  personId     String?
+  employeeId   String?
+  categoryId   String?
+  type         FeedbackType
+  title        String
+  description  String
+  priority     FeedbackPriority @default(NORMAL)
+  status       FeedbackStatus   @default(OPEN)
+  resolution   String?
+  resolvedAt   DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  deletedAt    DateTime?
+
+  tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site      Site                    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building  Building?               @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  apartment Apartment?              @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  person    Person?                 @relation(fields: [personId], references: [id], onDelete: SetNull)
+  employee  Employee?               @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  category  FeedbackCategory?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  histories FeedbackStatusHistory[]
+
+  @@index([tenantId, siteId, deletedAt])
+  @@index([siteId, status, deletedAt])
+  @@index([siteId, type, deletedAt])
+  @@index([siteId, priority, deletedAt])
+  @@index([categoryId])
+  @@index([employeeId])
+  @@index([personId])
+  @@index([buildingId])
+  @@index([apartmentId])
+  @@map("feedback_records")
+}
+
+model FeedbackStatusHistory {
+  id               String         @id @default(uuid())
+  tenantId         String
+  siteId           String
+  feedbackRecordId String
+  previousStatus   FeedbackStatus?
+  newStatus        FeedbackStatus
+  note             String?
+  createdAt        DateTime       @default(now())
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site           Site           @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  feedbackRecord FeedbackRecord @relation(fields: [feedbackRecordId], references: [id], onDelete: Cascade)
+
+  @@index([feedbackRecordId, createdAt])
+  @@index([tenantId, siteId, createdAt])
+  @@map("feedback_status_histories")
+}
+
+enum MessageChannel {
+  WHATSAPP
+  SMS
+}
+
+enum CommunicationMessageStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  CANCELLED
+}
+
+enum WhatsAppConnectionStatus {
+  DISCONNECTED
+  CONNECTED
+  ERROR
+}
+
+enum WhatsAppTemplateStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  PAUSED
+  DISABLED
+  UNKNOWN
+}
+
+enum WhatsAppTemplateSource {
+  META_SYNC
+  LIBRARY
+  CUSTOM
+}
+
+/// Tenant seviyesinde WhatsApp Cloud API bağlantısı.
+model WhatsAppIntegration {
+  id                    String                   @id @default(uuid())
+  tenantId              String
+  wabaId                String
+  phoneNumberId         String
+  businessPhone         String?
+  displayPhoneNumber    String?
+  verifiedName          String?
+  accessTokenEncrypted  String
+  tokenLastFour         String?
+  apiVersion            String
+  isActive              Boolean                  @default(true)
+  connectionStatus      WhatsAppConnectionStatus @default(DISCONNECTED)
+  lastCheckedAt         DateTime?
+  lastError             String?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  deletedAt             DateTime?
+
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  templates WhatsAppTemplate[]
+
+  @@index([tenantId, deletedAt, isActive])
+  @@map("whatsapp_integrations")
+}
+
+/// Meta WhatsApp şablonu (tenant seviyesi, entegrasyon altında).
+model WhatsAppTemplate {
+  id                String                 @id @default(uuid())
+  tenantId          String
+  integrationId     String?
+  metaTemplateId    String?
+  name              String
+  displayName       String?
+  language          String
+  category          String?
+  status            WhatsAppTemplateStatus
+  source            WhatsAppTemplateSource @default(META_SYNC)
+  bodyText          String?
+  parameterMapping  Json?
+  libraryKey        String?
+  componentsJson    Json
+  lastSyncedAt      DateTime
+  submittedAt       DateTime?
+  rejectionReason   String?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  isStale           Boolean                @default(false)
+  deletedAt         DateTime?
+
+  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  integration      WhatsAppIntegration? @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  messageTemplates MessageTemplate[]
+
+  @@unique([tenantId, name, language])
+  @@index([tenantId, status])
+  @@index([tenantId, deletedAt])
+  @@map("whatsapp_templates")
+}
+
+/// Tenant seviyesinde mesaj şablonu. Site-scoped değildir.
+model MessageTemplate {
+  id                       String         @id @default(uuid())
+  tenantId                 String
+  name                     String
+  channel                  MessageChannel
+  body                     String
+  whatsAppTemplateId       String?
+  whatsAppParameterMapping Json?
+  isActive                 Boolean        @default(true)
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+  deletedAt                DateTime?
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  whatsAppTemplate WhatsAppTemplate? @relation(fields: [whatsAppTemplateId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, channel, isActive])
+  @@map("message_templates")
+}
+
+/// Toplu gönderim grubu. Site-scoped.
+model CommunicationBatch {
+  id          String         @id @default(uuid())
+  tenantId    String
+  siteId      String
+  channel     MessageChannel
+  totalCount  Int            @default(0)
+  sentCount   Int            @default(0)
+  failedCount Int            @default(0)
+  createdAt   DateTime       @default(now())
+  completedAt DateTime?
+
+  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site     Site                    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  messages CommunicationMessage[]
+  idempotencyKeys CommunicationIdempotencyKey[]
+
+  @@index([tenantId, siteId, createdAt])
+  @@index([siteId, createdAt])
+  @@map("communication_batches")
+}
+
+/// Tekil gönderim kaydı. Site-scoped.
+model CommunicationMessage {
+  id                String                      @id @default(uuid())
+  tenantId          String
+  siteId            String
+  batchId           String?
+  channel           MessageChannel
+  personId          String?
+  apartmentId       String?
+  debtId            String?
+  toPhone           String
+  body              String
+  status            CommunicationMessageStatus  @default(PENDING)
+  provider          String?
+  providerMessageId String?
+  errorMessage      String?
+  sentAt            DateTime?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site      Site                 @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  batch     CommunicationBatch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  person    Person?              @relation(fields: [personId], references: [id], onDelete: SetNull)
+  apartment Apartment?           @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  debt      ApartmentDebt?       @relation(fields: [debtId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, siteId, createdAt])
+  @@index([siteId, status, createdAt])
+  @@index([batchId])
+  @@index([personId])
+  @@index([apartmentId])
+  @@index([providerMessageId])
+  @@map("communication_messages")
+}
+
+/// Aynı Idempotency-Key ile tekrarlayan toplu gönderimleri tekilleştirir.
+model CommunicationIdempotencyKey {
+  id        String   @id @default(uuid())
+  tenantId  String
+  key       String
+  batchId   String
+  createdAt DateTime @default(now())
+
+  tenant Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  batch  CommunicationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, key])
+  @@map("communication_idempotency_keys")
+}
+
+enum SubscriptionPlan {
+  DEMO
+  STANDARD
+  PROFESSIONAL
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  EXPIRED
+  SUSPENDED
+  CANCELLED
+}
+
+/// Tenant başına tek güncel abonelik. Ödeme sağlayıcısı bu fazda yok.
+model Subscription {
+  id           String             @id @default(uuid())
+  tenantId     String             @unique
+  plan         SubscriptionPlan   @default(DEMO)
+  status       SubscriptionStatus @default(TRIAL)
+  startsAt     DateTime
+  endsAt       DateTime
+  trialEndsAt  DateTime?
+  cancelledAt  DateTime?
+  note         String?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([status, endsAt])
+  @@map("subscriptions")
+}
+
+/// Platform admin işlem kaydı. Silinmez.
+model AdminAuditLog {
+  id          String   @id @default(uuid())
+  adminUserId String
+  action      String
+  targetType  String
+  targetId    String
+  tenantId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  adminUser User    @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+  tenant    Tenant? @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([tenantId, createdAt])
+  @@index([adminUserId, createdAt])
+  @@index([targetType, targetId])
+  @@map("admin_audit_logs")
+}
+
+/// Yalnız platform admin'e görünen support notu.
+model AdminNote {
+  id          String    @id @default(uuid())
+  tenantId    String
+  adminUserId String
+  content     String
+  createdAt   DateTime  @default(now())
+  deletedAt   DateTime?
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adminUser User   @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, deletedAt, createdAt])
+  @@map("admin_notes")
+}
+
+enum SmtpSecurity {
+  SSL_TLS
+  STARTTLS
+}
+
+enum PlatformEmailStatus {
+  UNCONFIGURED
+  READY
+  ERROR
+  INACTIVE
+}
+
+enum EmailDeliveryType {
+  TENANT_WELCOME_ACTIVATION
+  PLATFORM_NEW_TENANT_NOTIFICATION
+  SMTP_TEST
+}
+
+enum EmailDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+/// Merkezi platform SMTP bağlantısı. Tenant-scoped değildir; tek aktif kayıt beklenir.
+model PlatformEmailIntegration {
+  id                    String               @id @default(uuid())
+  providerType          String               @default("SMTP")
+  senderName            String
+  senderEmail           String
+  replyToEmail          String?
+  smtpHost              String
+  smtpPort              Int
+  smtpSecurity          SmtpSecurity
+  smtpUsername          String
+  encryptedSmtpPassword String
+  isActive              Boolean              @default(true)
+  status                PlatformEmailStatus  @default(UNCONFIGURED)
+  lastTestedAt          DateTime?
+  lastSuccessfulAt      DateTime?
+  lastErrorCode         String?
+  lastErrorSummary      String?
+  notificationEmail     String
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  updatedByUserId       String?
+
+  updatedByUser User? @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  @@map("platform_email_integrations")
+}
+
+/// İşlemsel e-posta teslimat kaydı. Gövde ve aktivasyon URL'si saklanmaz.
+model EmailDelivery {
+  id               String              @id @default(uuid())
+  type             EmailDeliveryType
+  recipientEmail   String
+  recipientName    String?
+  subject          String
+  status           EmailDeliveryStatus @default(PENDING)
+  providerMessageId String?
+  attempts         Int                 @default(0)
+  lastAttemptAt    DateTime?
+  sentAt           DateTime?
+  safeErrorCode    String?
+  safeErrorSummary String?
+  relatedTenantId  String?
+  relatedUserId    String?
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  relatedTenant Tenant? @relation(fields: [relatedTenantId], references: [id], onDelete: SetNull)
+  relatedUser   User?   @relation(fields: [relatedUserId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([type, createdAt])
+  @@index([relatedTenantId, createdAt])
+  @@index([relatedUserId])
+  @@map("email_deliveries")
+}
+
+/// Tek kullanımlık hesap aktivasyon tokenı. Açık token saklanmaz.
+model UserActivationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@index([expiresAt])
+  @@map("user_activation_tokens")
+}
+
+

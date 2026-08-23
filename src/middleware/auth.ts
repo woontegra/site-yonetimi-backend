@@ -30,3 +30,18 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     next(new HttpError(401, "Oturum geçersiz veya süresi dolmuş."));
   }
 }
+
+/** Site oluşturma / silme gibi yönetim işlemleri. */
+export function requireSiteManager(req: Request, _res: Response, next: NextFunction): void {
+  try {
+    if (!req.auth) {
+      throw new HttpError(401, "Oturum açmanız gerekiyor.");
+    }
+    if (req.auth.role !== "SITE_YONETICISI") {
+      throw new HttpError(403, "Site silme yetkiniz yok.");
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+}
