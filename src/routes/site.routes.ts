@@ -7,16 +7,17 @@ import {
   listSites,
   updateSite,
 } from "../controllers/site.controller";
-import { requireAuth, requireSiteManager } from "../middleware/auth";
+import { requireAuth } from "../middleware/auth";
 import { requireTenant } from "../middleware/tenant";
+import { requirePermission } from "../middleware/tenant";
 
 export const siteRouter = Router();
 
 siteRouter.use(requireAuth, requireTenant);
 
-siteRouter.get("/", listSites);
-siteRouter.get("/active", listActiveSites);
-siteRouter.get("/:id", getSite);
-siteRouter.post("/", createSite);
-siteRouter.patch("/:id", updateSite);
-siteRouter.delete("/:id", requireSiteManager, deleteSite);
+siteRouter.get("/", requirePermission("sites.view"), listSites);
+siteRouter.get("/active", requirePermission("sites.view"), listActiveSites);
+siteRouter.get("/:id", requirePermission("sites.view"), getSite);
+siteRouter.post("/", requirePermission("sites.manage"), createSite);
+siteRouter.patch("/:id", requirePermission("sites.manage"), updateSite);
+siteRouter.delete("/:id", requirePermission("sites.manage"), deleteSite);

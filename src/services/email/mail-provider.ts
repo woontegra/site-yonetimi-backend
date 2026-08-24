@@ -1,4 +1,4 @@
-import { env } from "../../config/env";
+﻿import { env } from "../../config/env";
 import type { MailProvider } from "./mail.types";
 import { mockMailProvider } from "./mock.provider";
 import { SmtpMailProvider } from "./smtp.provider";
@@ -21,7 +21,7 @@ export function getPublicAppUrl(): string | null {
   return raw;
 }
 
-/** PUBLIC_APP_URL slash ile bitsa bile çift slash üretmez. */
+/** PUBLIC_APP_URL slash ile bitsa bile ├ğift slash ├╝retmez. */
 export function publicAppHref(pathname: string, query?: Record<string, string>): string | null {
   const base = getPublicAppUrl();
   if (!base) return null;
@@ -33,3 +33,5 @@ export function publicAppHref(pathname: string, query?: Record<string, string>):
   }
   return url.toString();
 }
+
+

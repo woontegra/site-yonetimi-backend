@@ -18,6 +18,7 @@ import {
   preserveSourceOnMetaSync,
 } from "../utils/whatsapp-template-sync";
 import { env } from "../config/env";
+import { isOwnedSiteYonetimiTemplate } from "../utils/whatsapp-template-name";
 
 export type WhatsAppParameterField =
   | "adSoyad"
@@ -113,30 +114,30 @@ export function normalizeWhatsAppTemplate(
   };
 }
 
-function mapIntegrationDto(row: {
-  id: string;
-  wabaId: string;
-  phoneNumberId: string;
-  businessPhone: string | null;
-  displayPhoneNumber: string | null;
-  verifiedName: string | null;
-  tokenLastFour: string | null;
-  apiVersion: string;
-  isActive: boolean;
-  connectionStatus: "DISCONNECTED" | "CONNECTED" | "ERROR";
-  lastCheckedAt: Date | null;
-  lastError: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
+function mapIntegrationDto(
+  row: {
+    id: string;
+    wabaId: string;
+    phoneNumberId: string;
+    businessPhone: string | null;
+    displayPhoneNumber: string | null;
+    verifiedName: string | null;
+    tokenLastFour: string | null;
+    apiVersion: string;
+    isActive: boolean;
+    connectionStatus: "DISCONNECTED" | "CONNECTED" | "ERROR";
+    lastCheckedAt: Date | null;
+    lastError: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  includeTechnical = false,
+) {
   return {
     id: row.id,
-    wabaId: row.wabaId,
-    phoneNumberId: row.phoneNumberId,
-    businessPhone: row.businessPhone,
-    displayPhoneNumber: row.displayPhoneNumber,
     verifiedName: row.verifiedName,
-    accessTokenMasked: row.tokenLastFour ? `••••••••${row.tokenLastFour}` : "••••••••",
+    displayPhoneNumber: row.displayPhoneNumber,
+    businessPhone: row.businessPhone,
     apiVersion: row.apiVersion,
     isActive: row.isActive,
     connectionStatus: row.connectionStatus,
@@ -144,6 +145,9 @@ function mapIntegrationDto(row: {
     lastError: row.lastError,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    ...(includeTechnical
+      ? { wabaId: row.wabaId, phoneNumberId: row.phoneNumberId }
+      : {}),
   };
 }
 
@@ -199,10 +203,10 @@ export class WhatsAppIntegrationService {
     });
   }
 
-  async get(tenantId: string) {
+  async get(tenantId: string, includeTechnical = false) {
     const row = await this.getActiveIntegration(tenantId);
     if (!row) return null;
-    return mapIntegrationDto(row);
+    return mapIntegrationDto(row, includeTechnical);
   }
 
   async connect(
@@ -261,7 +265,7 @@ export class WhatsAppIntegrationService {
       });
     });
 
-    return mapIntegrationDto(row);
+    return mapIntegrationDto(row, true);
   }
 
   async test(tenantId: string) {
@@ -290,7 +294,7 @@ export class WhatsAppIntegrationService {
           lastError: null,
         },
       });
-      return mapIntegrationDto(row);
+      return mapIntegrationDto(row, false);
     } catch (error) {
       const message =
         error instanceof MetaWhatsAppClientError
@@ -324,6 +328,16 @@ export class WhatsAppIntegrationService {
   }
 
   async syncTemplates(tenantId: string) {
+    try {
+      return await this.runTemplateSync(tenantId);
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      console.error("[whatsapp-template-sync]", error instanceof Error ? error.message : error);
+      throw new HttpError(400, "Şablonlar senkronize edilemedi. Lütfen tekrar deneyin.");
+    }
+  }
+
+  private async runTemplateSync(tenantId: string) {
     const integration = await this.getActiveIntegration(tenantId);
     if (!integration || integration.connectionStatus !== "CONNECTED") {
       throw new HttpError(400, "WhatsApp bağlantısı kurulmamış.");
@@ -334,114 +348,68 @@ export class WhatsAppIntegrationService {
     try {
       metaTemplates = await listMessageTemplates(integration.wabaId, accessToken);
     } catch (error) {
-      const message =
-        error instanceof MetaWhatsAppClientError
-          ? error.message
-          : "WhatsApp bağlantısı doğrulanamadı.";
-      throw new HttpError(400, message);
+      console.error(
+        "[whatsapp-template-sync]",
+        error instanceof MetaWhatsAppClientError ? error.message : "Meta şablon listesi alınamadı.",
+      );
+      throw new HttpError(400, "Şablonlar senkronize edilemedi. Lütfen tekrar deneyin.");
     }
 
     const now = new Date();
-    const seenKeys = new Set<string>();
-
-    await prisma.$transaction(async (tx) => {
-      for (const meta of metaTemplates) {
-        const key = `${meta.name}:${meta.language}`;
-        seenKeys.add(key);
-        const status = mapMetaTemplateStatus(meta.status);
-        const components = meta.components ?? [];
-        const rejectionReason = extractMetaRejectionReason(meta);
-
-        const existing = await tx.whatsAppTemplate.findUnique({
-          where: {
-            tenantId_name_language: {
-              tenantId,
-              name: meta.name,
-              language: meta.language,
-            },
-          },
-        });
-
-        if (existing?.status === "DRAFT") {
-          continue;
-        }
-
-        const preservedSource = preserveSourceOnMetaSync(existing?.source);
-
-        await tx.whatsAppTemplate.upsert({
-          where: {
-            tenantId_name_language: {
-              tenantId,
-              name: meta.name,
-              language: meta.language,
-            },
-          },
-          create: {
-            tenantId,
-            integrationId: integration.id,
-            metaTemplateId: meta.id,
-            name: meta.name,
-            language: meta.language,
-            category: meta.category ?? null,
-            status,
-            source: "META_SYNC",
-            componentsJson: components as Prisma.InputJsonValue,
-            lastSyncedAt: now,
-            isStale: false,
-            ...(rejectionReason ? { rejectionReason } : {}),
-          },
-          update: {
-            integrationId: integration.id,
-            metaTemplateId: meta.id,
-            category: meta.category ?? null,
-            status,
-            componentsJson: components as Prisma.InputJsonValue,
-            lastSyncedAt: now,
-            isStale: false,
-            ...(preservedSource ? { source: preservedSource } : {}),
-            ...(status === "REJECTED" && rejectionReason
-              ? { rejectionReason }
-              : status !== "REJECTED"
-                ? { rejectionReason: null }
-                : {}),
-          },
-        });
-      }
-
-      const staleFilter = {
+    const ownedLocals = await prisma.whatsAppTemplate.findMany({
+      where: {
         tenantId,
-        integrationId: integration.id,
         deletedAt: null,
-        status: { not: "DRAFT" as WhatsAppTemplateStatus },
-        NOT: {
-          OR: Array.from(seenKeys).map((key) => {
-            const colonIndex = key.indexOf(":");
-            const name = key.slice(0, colonIndex);
-            const language = key.slice(colonIndex + 1);
-            return { AND: [{ name }, { language }] };
-          }),
-        },
-      };
-
-      if (seenKeys.size > 0) {
-        await tx.whatsAppTemplate.updateMany({
-          where: staleFilter,
-          data: {
-            isStale: true,
-          },
-        });
-      } else {
-        await tx.whatsAppTemplate.updateMany({
-          where: {
-            tenantId,
-            integrationId: integration.id,
-            deletedAt: null,
-            status: { not: "DRAFT" },
-          },
-          data: { isStale: true },
-        });
-      }
+      },
     });
+
+    const metaByNameLanguage = new Map<string, MetaMessageTemplate>();
+    const metaById = new Map<string, MetaMessageTemplate>();
+    for (const meta of metaTemplates) {
+      metaByNameLanguage.set(`${meta.name}:${meta.language}`, meta);
+      if (meta.id) metaById.set(meta.id, meta);
+    }
+
+    for (const local of ownedLocals) {
+      if (!isOwnedSiteYonetimiTemplate(local)) continue;
+      if (local.status === "DRAFT") continue;
+
+      const meta =
+        metaByNameLanguage.get(`${local.name}:${local.language}`) ??
+        (local.metaTemplateId ? metaById.get(local.metaTemplateId) : undefined);
+
+      if (!meta) {
+        await prisma.whatsAppTemplate.update({
+          where: { id: local.id },
+          data: { isStale: true, lastSyncedAt: now },
+        });
+        continue;
+      }
+
+      const status = mapMetaTemplateStatus(meta.status);
+      const components = meta.components ?? [];
+      const rejectionReason = extractMetaRejectionReason(meta);
+      const preservedSource = preserveSourceOnMetaSync(local.source);
+
+      await prisma.whatsAppTemplate.update({
+        where: { id: local.id },
+        data: {
+          integrationId: integration.id,
+          metaTemplateId: meta.id,
+          category: meta.category ?? local.category,
+          status,
+          componentsJson: components as Prisma.InputJsonValue,
+          lastSyncedAt: now,
+          isStale: false,
+          ...(preservedSource ? { source: preservedSource } : {}),
+          ...(status === "REJECTED" && rejectionReason
+            ? { rejectionReason }
+            : status !== "REJECTED"
+              ? { rejectionReason: null }
+              : {}),
+        },
+      });
+    }
 
     return this.listTemplates(tenantId, {});
   }
@@ -470,7 +438,9 @@ export class WhatsAppIntegrationService {
     });
 
     return {
-      items: items.map(mapWhatsAppTemplateDto),
+      items: items
+        .filter((item) => isOwnedSiteYonetimiTemplate(item))
+        .map(mapWhatsAppTemplateDto),
       syncedAt: items[0]?.lastSyncedAt.toISOString() ?? null,
     };
   }

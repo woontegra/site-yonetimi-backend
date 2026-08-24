@@ -8,14 +8,14 @@ import {
 } from "../controllers/payment.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireSite } from "../middleware/site";
-import { requireTenant } from "../middleware/tenant";
+import { requirePermission, requireTenant } from "../middleware/tenant";
 
 export const paymentRouter = Router();
 
 paymentRouter.use(requireAuth, requireTenant, requireSite);
 
-paymentRouter.get("/", listPayments);
-paymentRouter.get("/summary/monthly", paymentMonthlySummary);
-paymentRouter.get("/:id", getPayment);
-paymentRouter.post("/", createPayment);
-paymentRouter.delete("/:id", deletePayment);
+paymentRouter.get("/", requirePermission("payments.view"), listPayments);
+paymentRouter.get("/summary/monthly", requirePermission("payments.view"), paymentMonthlySummary);
+paymentRouter.get("/:id", requirePermission("payments.view"), getPayment);
+paymentRouter.post("/", requirePermission("payments.create"), createPayment);
+paymentRouter.delete("/:id", requirePermission("payments.cancel"), deletePayment);

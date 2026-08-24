@@ -17,6 +17,7 @@ model Tenant {
   updatedAt DateTime @updatedAt
 
   memberships               Membership[]
+  tenantAuditLogs           TenantAuditLog[]
   subscription              Subscription?
   adminNotes                AdminNote[]
   adminAuditLogs            AdminAuditLog[]
@@ -74,6 +75,7 @@ model User {
   updatedAt        DateTime @updatedAt
 
   memberships    Membership[]
+  tenantAuditLogs TenantAuditLog[]
   announcements  Announcement[]
   adminNotes     AdminNote[]
   adminAuditLogs AdminAuditLog[]
@@ -90,22 +92,70 @@ enum UserRole {
   YONETIM_PERSONELI
   MUHASEBE_PERSONELI
   SINIRLI_YETKILI
+  ORGANIZASYON_SAHIBI
+  YONETICI
+  MUHASEBE
+  OPERASYON
+  GORUNTULEYICI
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
 }
 
 model Membership {
-  id        String   @id @default(uuid())
-  userId    String
-  tenantId  String
-  role      UserRole @default(SITE_YONETICISI)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id                 String           @id @default(uuid())
+  userId             String
+  tenantId           String
+  role               UserRole         @default(SITE_YONETICISI)
+  status             MembershipStatus @default(ACTIVE)
+  allSites           Boolean          @default(true)
+  permissions        Json             @default("[]")
+  permissionVersion  Int              @default(0)
+  invitedAt          DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  siteAccesses MembershipSiteAccess[]
 
   @@unique([userId, tenantId])
-  @@index([tenantId])
+  @@index([tenantId, status])
   @@map("memberships")
+}
+
+model MembershipSiteAccess {
+  id           String @id @default(uuid())
+  membershipId String
+  siteId       String
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  site       Site       @relation(fields: [siteId], references: [id], onDelete: Cascade)
+
+  @@unique([membershipId, siteId])
+  @@index([siteId])
+  @@map("membership_site_accesses")
+}
+
+model TenantAuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String
+  actorUserId String
+  action      String
+  targetType  String
+  targetId    String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor  User   @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@map("tenant_audit_logs")
 }
 
 enum SiteSetupStatus {
@@ -133,6 +183,7 @@ model Site {
   deletedAt        DateTime?
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  membershipSiteAccesses MembershipSiteAccess[]
   buildings           Building[]
   expenses            Expense[]
   bankAccounts        BankAccount[]

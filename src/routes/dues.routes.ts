@@ -11,17 +11,17 @@ import {
 } from "../controllers/dues.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireSite } from "../middleware/site";
-import { requireTenant } from "../middleware/tenant";
+import { requirePermission, requireTenant } from "../middleware/tenant";
 
 export const duesRouter = Router();
 
 duesRouter.use(requireAuth, requireTenant, requireSite);
 
-duesRouter.get("/", listDuesDefinitions);
-duesRouter.get("/:id", getDuesDefinition);
-duesRouter.get("/:id/charge-preview", previewDuesCharge);
-duesRouter.post("/", createDuesDefinition);
-duesRouter.post("/:id/charge", chargeDues);
-duesRouter.post("/:id/cancel-open-debts", cancelOpenDuesDebts);
-duesRouter.patch("/:id", updateDuesDefinition);
-duesRouter.delete("/:id", deleteDuesDefinition);
+duesRouter.get("/", requirePermission("dues.view"), listDuesDefinitions);
+duesRouter.get("/:id", requirePermission("dues.view"), getDuesDefinition);
+duesRouter.get("/:id/charge-preview", requirePermission("dues.view"), previewDuesCharge);
+duesRouter.post("/", requirePermission("dues.manage"), createDuesDefinition);
+duesRouter.post("/:id/charge", requirePermission("dues.manage"), chargeDues);
+duesRouter.post("/:id/cancel-open-debts", requirePermission("dues.manage"), cancelOpenDuesDebts);
+duesRouter.patch("/:id", requirePermission("dues.manage"), updateDuesDefinition);
+duesRouter.delete("/:id", requirePermission("dues.manage"), deleteDuesDefinition);

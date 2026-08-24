@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+﻿import { createHash, randomBytes } from "crypto";
 import { prisma } from "../../lib/prisma";
 import { HttpError } from "../../utils/httpError";
 
@@ -38,16 +38,16 @@ export async function consumeActivationToken(raw: string) {
     include: { user: true },
   });
   if (!record) {
-    throw new HttpError(400, "Aktivasyon bağlantısı geçersiz.", "ACTIVATION_INVALID");
+    throw new HttpError(400, "Aktivasyon ba─şlant─▒s─▒ ge├ğersiz.", "ACTIVATION_INVALID");
   }
   if (record.user.isActive) {
-    throw new HttpError(400, "Bu hesap zaten etkinleştirilmiş.", "ACTIVATION_ALREADY_ACTIVE");
+    throw new HttpError(400, "Bu hesap zaten etkinle┼ştirilmi┼ş.", "ACTIVATION_ALREADY_ACTIVE");
   }
   if (record.usedAt) {
-    throw new HttpError(400, "Bu aktivasyon bağlantısı daha önce kullanılmış.", "ACTIVATION_USED");
+    throw new HttpError(400, "Bu aktivasyon ba─şlant─▒s─▒ daha ├Ânce kullan─▒lm─▒┼ş.", "ACTIVATION_USED");
   }
   if (record.expiresAt.getTime() < Date.now()) {
-    throw new HttpError(400, "Aktivasyon bağlantısının süresi dolmuş.", "ACTIVATION_EXPIRED");
+    throw new HttpError(400, "Aktivasyon ba─şlant─▒s─▒n─▒n s├╝resi dolmu┼ş.", "ACTIVATION_EXPIRED");
   }
   return record;
 }
@@ -77,3 +77,5 @@ export async function peekActivationToken(raw: string): Promise<ActivationPeekRe
     expiresAt: record.expiresAt,
   };
 }
+
+

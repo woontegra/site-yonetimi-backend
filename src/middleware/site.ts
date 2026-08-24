@@ -37,6 +37,13 @@ export async function requireSite(
       throw new HttpError(403, "Bu siteye erişim yetkiniz yok.");
     }
 
+    if (req.auth.allSites === false) {
+      const allowed = req.auth.allowedSiteIds ?? [];
+      if (!allowed.includes(site.id)) {
+        throw new HttpError(403, "Bu siteye erişim yetkiniz yok.");
+      }
+    }
+
     req.auth.siteId = site.id;
     req.auth.siteIsActive = site.isActive;
     next();
@@ -80,6 +87,13 @@ export async function optionalSite(
 
     if (!site) {
       throw new HttpError(403, "Bu siteye erişim yetkiniz yok.");
+    }
+
+    if (req.auth.allSites === false) {
+      const allowed = req.auth.allowedSiteIds ?? [];
+      if (!allowed.includes(site.id)) {
+        throw new HttpError(403, "Bu siteye erişim yetkiniz yok.");
+      }
     }
 
     req.auth.siteId = site.id;

@@ -13,6 +13,10 @@ declare global {
         siteId?: string | null;
         siteIsActive?: boolean | null;
         isPlatformAdmin?: boolean;
+        membershipId?: string;
+        allSites?: boolean;
+        allowedSiteIds?: string[] | null;
+        permissions?: string[];
       };
     }
   }

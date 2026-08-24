@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from "express";
 import { assertSiteActive, siteIdFrom } from "../middleware/site";
 import { siteService } from "../services/site.service";
+import { allowedSiteIdsFrom } from "../middleware/tenant";
 import { HttpError } from "../utils/httpError";
 import {
   createSiteSchema,
@@ -26,7 +27,8 @@ export async function listSites(req: Request, res: Response, next: NextFunction)
     if (!parsed.success) {
       throw new HttpError(400, firstZodMessage(parsed.error));
     }
-    const result = await siteService.list(tenantIdFrom(req), parsed.data);
+    const allowedSiteIds = allowedSiteIdsFrom(req);
+    const result = await siteService.list(tenantIdFrom(req), parsed.data, allowedSiteIds);
     res.status(200).json(result);
   } catch (error) {
     next(error);
@@ -35,7 +37,7 @@ export async function listSites(req: Request, res: Response, next: NextFunction)
 
 export async function listActiveSites(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const items = await siteService.listActive(tenantIdFrom(req));
+    const items = await siteService.listActive(tenantIdFrom(req), allowedSiteIdsFrom(req));
     res.status(200).json({ items });
   } catch (error) {
     next(error);

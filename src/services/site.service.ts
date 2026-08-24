@@ -27,11 +27,14 @@ const siteSelect = {
 } as const;
 
 export class SiteService {
-  async list(tenantId: string, query: ListSitesQuery) {
+  async list(tenantId: string, query: ListSitesQuery, allowedSiteIds?: string[] | null) {
     const where: Prisma.SiteWhereInput = {
       tenantId,
       deletedAt: null,
     };
+    if (allowedSiteIds) {
+      where.id = { in: allowedSiteIds };
+    }
 
     if (query.status === "aktif") where.isActive = true;
     if (query.status === "pasif") where.isActive = false;
@@ -110,9 +113,14 @@ export class SiteService {
     };
   }
 
-  async listActive(tenantId: string) {
+  async listActive(tenantId: string, allowedSiteIds?: string[] | null) {
     return prisma.site.findMany({
-      where: { tenantId, deletedAt: null, isActive: true },
+      where: {
+        tenantId,
+        deletedAt: null,
+        isActive: true,
+        ...(allowedSiteIds ? { id: { in: allowedSiteIds } } : {}),
+      },
       select: { id: true, name: true, code: true, city: true, district: true, address: true },
       orderBy: { createdAt: "asc" },
     });

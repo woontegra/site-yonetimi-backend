@@ -1,8 +1,25 @@
 import bcrypt from "bcryptjs";
+import type { UserRole } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { signAccessToken } from "../lib/jwt";
+import { effectivePermissions } from "../permissions/catalog";
 import { grantPlatformAdminIfListed } from "./platform-admin.service";
 import { HttpError } from "../utils/httpError";
+
+const membershipInclude = {
+  tenant: true,
+  siteAccesses: { select: { siteId: true } },
+} as const;
+
+type MembershipWithAccess = {
+  tenantId: string;
+  role: UserRole;
+  status: "INVITED" | "ACTIVE" | "DISABLED";
+  allSites: boolean;
+  permissions: unknown;
+  tenant: { id: string; name: string; slug: string; isActive: boolean };
+  siteAccesses: Array<{ siteId: string }>;
+};
 
 export type PublicUser = {
   id: string;
@@ -14,27 +31,33 @@ export type PublicUser = {
     name: string;
     slug: string;
     role: string;
+    permissions: string[];
+    allSites: boolean;
+    siteIds: string[] | null;
   }>;
 };
+
+function usableMemberships(items: MembershipWithAccess[]) {
+  return items.filter((item) => item.tenant.isActive && item.status === "ACTIVE");
+}
 
 export class AuthService {
   async login(email: string, password: string): Promise<{ token: string; user: PublicUser }> {
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },
-      include: {
-        memberships: {
-          include: { tenant: true },
-        },
-      },
+      include: { memberships: { include: membershipInclude } },
     });
 
-    if (!user || !user.isActive) {
+    if (!user) {
       throw new HttpError(401, "E-posta veya şifre hatalı.");
     }
 
     const matches = await bcrypt.compare(password, user.passwordHash);
     if (!matches) {
       throw new HttpError(401, "E-posta veya şifre hatalı.");
+    }
+    if (!user.isActive) {
+      throw new HttpError(403, "Hesabınız henüz etkinleştirilmedi veya pasif.");
     }
 
     await grantPlatformAdminIfListed(user.email);
@@ -44,17 +67,20 @@ export class AuthService {
     });
     const refreshed = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      include: { memberships: { include: { tenant: true } } },
+      include: { memberships: { include: membershipInclude } },
     });
 
-    const activeMemberships = refreshed.memberships.filter((item) => item.tenant.isActive);
-    const primary = activeMemberships[0] ?? null;
+    const activeMemberships = usableMemberships(refreshed.memberships);
+    if (activeMemberships.length === 0) {
+      throw new HttpError(403, "Bu hesap için aktif bir üyelik bulunmuyor.");
+    }
+    const primary = activeMemberships[0];
 
     const token = signAccessToken({
       sub: refreshed.id,
       email: refreshed.email,
-      tenantId: primary?.tenantId ?? null,
-      role: primary?.role ?? null,
+      tenantId: primary.tenantId,
+      role: primary.role,
     });
 
     return {
@@ -76,9 +102,7 @@ export class AuthService {
     const email = "yonetici@site.com";
     let user = await prisma.user.findUnique({
       where: { email },
-      include: {
-        memberships: { include: { tenant: true } },
-      },
+      include: { memberships: { include: membershipInclude } },
     });
 
     if (!user) {
@@ -91,13 +115,13 @@ export class AuthService {
           memberships: {
             create: {
               tenantId: tenant.id,
-              role: "SITE_YONETICISI",
+              role: "ORGANIZASYON_SAHIBI",
+              status: "ACTIVE",
+              allSites: true,
             },
           },
         },
-        include: {
-          memberships: { include: { tenant: true } },
-        },
+        include: { memberships: { include: membershipInclude } },
       });
     } else {
       await prisma.membership.upsert({
@@ -111,14 +135,14 @@ export class AuthService {
         create: {
           userId: user.id,
           tenantId: tenant.id,
-          role: "SITE_YONETICISI",
+          role: "ORGANIZASYON_SAHIBI",
+          status: "ACTIVE",
+          allSites: true,
         },
       });
       user = await prisma.user.findUniqueOrThrow({
         where: { id: user.id },
-        include: {
-          memberships: { include: { tenant: true } },
-        },
+        include: { memberships: { include: membershipInclude } },
       });
     }
 
@@ -129,17 +153,17 @@ export class AuthService {
     });
     const refreshed = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      include: { memberships: { include: { tenant: true } } },
+      include: { memberships: { include: membershipInclude } },
     });
 
-    const activeMemberships = refreshed.memberships.filter((item) => item.tenant.isActive);
+    const activeMemberships = usableMemberships(refreshed.memberships);
     const primary = activeMemberships.find((item) => item.tenantId === tenant.id) ?? activeMemberships[0] ?? null;
 
     const token = signAccessToken({
       sub: refreshed.id,
       email: refreshed.email,
       tenantId: primary?.tenantId ?? tenant.id,
-      role: primary?.role ?? "SITE_YONETICISI",
+      role: primary?.role ?? "ORGANIZASYON_SAHIBI",
     });
 
     return {
@@ -151,11 +175,7 @@ export class AuthService {
   async getMe(userId: string): Promise<PublicUser> {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      include: {
-        memberships: {
-          include: { tenant: true },
-        },
-      },
+      include: { memberships: { include: membershipInclude } },
     });
 
     if (!user || !user.isActive) {
@@ -165,11 +185,10 @@ export class AuthService {
     await grantPlatformAdminIfListed(user.email);
     const refreshed = await prisma.user.findUniqueOrThrow({
       where: { id: user.id },
-      include: { memberships: { include: { tenant: true } } },
+      include: { memberships: { include: membershipInclude } },
     });
 
-    const activeMemberships = refreshed.memberships.filter((item) => item.tenant.isActive);
-    return this.toPublicUser(refreshed, activeMemberships);
+    return this.toPublicUser(refreshed, usableMemberships(refreshed.memberships));
   }
 
   private toPublicUser(
@@ -179,10 +198,7 @@ export class AuthService {
       fullName: string;
       isPlatformAdmin: boolean;
     },
-    memberships: Array<{
-      role: string;
-      tenant: { id: string; name: string; slug: string };
-    }>,
+    memberships: MembershipWithAccess[],
   ): PublicUser {
     return {
       id: user.id,
@@ -194,6 +210,9 @@ export class AuthService {
         name: item.tenant.name,
         slug: item.tenant.slug,
         role: item.role,
+        permissions: effectivePermissions(item.role, item.permissions),
+        allSites: item.allSites,
+        siteIds: item.allSites ? null : item.siteAccesses.map((access) => access.siteId),
       })),
     };
   }

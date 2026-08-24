@@ -23,7 +23,10 @@ function firstZodMessage(error: { issues: Array<{ message: string }> }): string 
 
 export async function getWhatsAppIntegration(req: Request, res: Response, next: NextFunction) {
   try {
-    const integration = await whatsAppIntegrationService.get(tenantIdFrom(req));
+    const integration = await whatsAppIntegrationService.get(
+      tenantIdFrom(req),
+      Boolean(req.auth?.isPlatformAdmin),
+    );
     res.status(200).json({ integration });
   } catch (error) {
     next(error);
@@ -70,7 +73,15 @@ export async function syncWhatsAppTemplates(req: Request, res: Response, next: N
   try {
     res.status(200).json(await whatsAppIntegrationService.syncTemplates(tenantIdFrom(req)));
   } catch (error) {
-    next(error);
+    if (error instanceof HttpError) {
+      next(error);
+      return;
+    }
+    console.error(
+      "[whatsapp-template-sync]",
+      error instanceof Error ? error.message : "Bilinmeyen senkronizasyon hatası",
+    );
+    next(new HttpError(400, "Şablonlar senkronize edilemedi. Lütfen tekrar deneyin."));
   }
 }
 

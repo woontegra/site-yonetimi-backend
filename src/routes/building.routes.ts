@@ -8,14 +8,14 @@ import {
 } from "../controllers/building.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireSite } from "../middleware/site";
-import { requireTenant } from "../middleware/tenant";
+import { requirePermission, requireTenant } from "../middleware/tenant";
 
 export const buildingRouter = Router();
 
 buildingRouter.use(requireAuth, requireTenant, requireSite);
 
-buildingRouter.get("/", listBuildings);
-buildingRouter.get("/:id", getBuilding);
-buildingRouter.post("/", createBuilding);
-buildingRouter.patch("/:id", updateBuilding);
-buildingRouter.delete("/:id", deleteBuilding);
+buildingRouter.get("/", requirePermission("buildings.view"), listBuildings);
+buildingRouter.get("/:id", requirePermission("buildings.view"), getBuilding);
+buildingRouter.post("/", requirePermission("buildings.manage"), createBuilding);
+buildingRouter.patch("/:id", requirePermission("buildings.manage"), updateBuilding);
+buildingRouter.delete("/:id", requirePermission("buildings.manage"), deleteBuilding);

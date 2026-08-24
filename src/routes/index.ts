@@ -30,10 +30,12 @@ import { siteSetupRouter } from "./site-setup.routes";
 import { supplierRouter } from "./supplier.routes";
 import { visitRouter } from "./visit.routes";
 import { visitorRouter } from "./visitor.routes";
+import { tenantUserRouter } from "./tenant-users.routes";
 
 export const apiRouter = Router();
 
 /** Lisans kilidi (requireValidLicense) bu fazda tenant route'larına takılmaz. */
+apiRouter.use("/tenant-users", tenantUserRouter);
 apiRouter.use("/admin", adminRouter);
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/auth", authRouter);

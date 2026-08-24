@@ -19,6 +19,7 @@ import {
   validateBodyForMeta,
 } from "../utils/whatsapp-template-body";
 import { createMessageTemplate, type MetaTemplateComponent } from "./meta-whatsapp-client";
+import { isOwnedSiteYonetimiTemplate } from "../utils/whatsapp-template-name";
 import {
   normalizeWhatsAppTemplate,
   WHATSAPP_PARAMETER_FIELDS,
@@ -205,7 +206,11 @@ export class WhatsAppTemplateLibraryService {
 
   async listMine(tenantId: string) {
     const items = await prisma.whatsAppTemplate.findMany({
-      where: { tenantId, deletedAt: null },
+      where: {
+        tenantId,
+        deletedAt: null,
+        NOT: { name: { startsWith: "mk_", mode: "insensitive" } },
+      },
       include: {
         messageTemplates: {
           where: { deletedAt: null },
@@ -214,7 +219,11 @@ export class WhatsAppTemplateLibraryService {
       },
       orderBy: [{ updatedAt: "desc" }, { displayName: "asc" }, { name: "asc" }],
     });
-    return { items: items.map(mapTemplateDto) };
+    return {
+      items: items
+        .filter((row) => isOwnedSiteYonetimiTemplate(row))
+        .map(mapTemplateDto),
+    };
   }
 
   async createFromLibrary(tenantId: string, libraryKey: string) {

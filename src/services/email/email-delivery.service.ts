@@ -1,4 +1,4 @@
-import type { EmailDeliveryStatus, EmailDeliveryType, PlatformEmailIntegration, Prisma } from "@prisma/client";
+﻿import type { EmailDeliveryStatus, EmailDeliveryType, PlatformEmailIntegration, Prisma } from "@prisma/client";
 import { prisma } from "../../lib/prisma";
 import { maskEmail } from "../../utils/admin";
 import type { MailSendResult } from "./mail.types";
@@ -114,10 +114,7 @@ export async function createDelivery(input: {
   });
 }
 
-export async function markDeliveryResult(
-  id: string,
-  result: MailSendResult,
-) {
+export async function markDeliveryResult(id: string, result: MailSendResult) {
   const sent = result.status === "SENT";
   return prisma.emailDelivery.update({
     where: { id },
@@ -152,3 +149,4 @@ export function toPublicEmailStatus(integration: PlatformEmailIntegration | null
   }
   return { connected: false, label: "Yapılandırılmamış", status: "UNCONFIGURED" };
 }
+

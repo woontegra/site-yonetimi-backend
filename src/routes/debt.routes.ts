@@ -8,14 +8,14 @@ import {
 } from "../controllers/debt.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireSite } from "../middleware/site";
-import { requireTenant } from "../middleware/tenant";
+import { requirePermission, requireTenant } from "../middleware/tenant";
 
 export const debtRouter = Router();
 
 debtRouter.use(requireAuth, requireTenant, requireSite);
 
-debtRouter.get("/", listApartmentDebts);
-debtRouter.get("/:id", getApartmentDebt);
-debtRouter.post("/", createApartmentDebt);
-debtRouter.patch("/:id", updateApartmentDebt);
-debtRouter.delete("/:id", deleteApartmentDebt);
+debtRouter.get("/", requirePermission("debts.view"), listApartmentDebts);
+debtRouter.get("/:id", requirePermission("debts.view"), getApartmentDebt);
+debtRouter.post("/", requirePermission("debts.create"), createApartmentDebt);
+debtRouter.patch("/:id", requirePermission("debts.create"), updateApartmentDebt);
+debtRouter.delete("/:id", requirePermission("debts.cancel"), deleteApartmentDebt);

@@ -15,6 +15,7 @@ import {
   testWhatsAppIntegration,
   updateWhatsAppTemplateDraft,
 } from "../controllers/whatsapp-integration.controller";
+import { requirePlatformAdmin } from "../middleware/platformAdmin";
 import { requireAuth } from "../middleware/auth";
 import { requireTenant } from "../middleware/tenant";
 
@@ -23,7 +24,7 @@ export const whatsappIntegrationRouter = Router();
 whatsappIntegrationRouter.use(requireAuth, requireTenant);
 
 whatsappIntegrationRouter.get("/", getWhatsAppIntegration);
-whatsappIntegrationRouter.post("/connect", connectWhatsAppIntegration);
+whatsappIntegrationRouter.post("/connect", requirePlatformAdmin, connectWhatsAppIntegration);
 whatsappIntegrationRouter.post("/test", testWhatsAppIntegration);
 whatsappIntegrationRouter.delete("/", disconnectWhatsAppIntegration);
 whatsappIntegrationRouter.post("/templates/sync", syncWhatsAppTemplates);

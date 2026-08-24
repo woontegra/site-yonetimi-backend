@@ -179,6 +179,10 @@ export async function completeActivation(rawToken: string, password: string) {
       where: { id: record.userId },
       data: { passwordHash, isActive: true },
     });
+    await tx.membership.updateMany({
+      where: { userId: record.userId, status: "INVITED" },
+      data: { status: "ACTIVE" },
+    });
   });
   return { email: record.user.email, fullName: record.user.fullName };
 }

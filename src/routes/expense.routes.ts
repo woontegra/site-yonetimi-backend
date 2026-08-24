@@ -9,15 +9,15 @@ import {
 } from "../controllers/expense.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireSite } from "../middleware/site";
-import { requireTenant } from "../middleware/tenant";
+import { requirePermission, requireTenant } from "../middleware/tenant";
 
 export const expenseRouter = Router();
 
 expenseRouter.use(requireAuth, requireTenant, requireSite);
 
-expenseRouter.get("/", listExpenses);
-expenseRouter.get("/summary/monthly", expenseMonthlySummary);
-expenseRouter.get("/:id", getExpense);
-expenseRouter.post("/", createExpense);
-expenseRouter.patch("/:id", updateExpense);
-expenseRouter.delete("/:id", deleteExpense);
+expenseRouter.get("/", requirePermission("expenses.view"), listExpenses);
+expenseRouter.get("/summary/monthly", requirePermission("expenses.view"), expenseMonthlySummary);
+expenseRouter.get("/:id", requirePermission("expenses.view"), getExpense);
+expenseRouter.post("/", requirePermission("expenses.create"), createExpense);
+expenseRouter.patch("/:id", requirePermission("expenses.manage"), updateExpense);
+expenseRouter.delete("/:id", requirePermission("expenses.cancel"), deleteExpense);

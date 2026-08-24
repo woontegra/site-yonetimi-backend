@@ -1,18 +1,18 @@
 import { z } from "zod";
 
+const metaNumericId = (label: string) =>
+  z
+    .string({ required_error: `${label} zorunludur.` })
+    .trim()
+    .regex(/^\d+$/, `${label} yalnızca rakamlardan oluşmalıdır.`);
+
 export const whatsAppConnectSchema = z.object({
-  wabaId: z
-    .string({ required_error: "WABA ID zorunludur." })
-    .trim()
-    .min(1, "WABA ID zorunludur."),
-  phoneNumberId: z
-    .string({ required_error: "Telefon numarası ID zorunludur." })
-    .trim()
-    .min(1, "Telefon numarası ID zorunludur."),
+  wabaId: metaNumericId("WABA ID"),
+  phoneNumberId: metaNumericId("Phone Number ID"),
   accessToken: z
     .string({ required_error: "Erişim anahtarı zorunludur." })
     .trim()
-    .min(1, "Erişim anahtarı zorunludur."),
+    .min(20, "Erişim anahtarı geçersiz."),
 });
 
 export const whatsAppTemplateStatusSchema = z.enum([

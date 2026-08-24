@@ -8,12 +8,10 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
     if (!header?.startsWith("Bearer ")) {
       throw new HttpError(401, "Oturum açmanız gerekiyor.");
     }
-
     const token = header.slice("Bearer ".length).trim();
     if (!token) {
       throw new HttpError(401, "Oturum açmanız gerekiyor.");
     }
-
     const payload = verifyAccessToken(token);
     req.auth = {
       userId: payload.sub,
@@ -31,13 +29,12 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
   }
 }
 
-/** Site oluşturma / silme gibi yönetim işlemleri. */
 export function requireSiteManager(req: Request, _res: Response, next: NextFunction): void {
   try {
     if (!req.auth) {
       throw new HttpError(401, "Oturum açmanız gerekiyor.");
     }
-    if (req.auth.role !== "SITE_YONETICISI") {
+    if (!req.auth.permissions?.includes("sites.manage")) {
       throw new HttpError(403, "Site silme yetkiniz yok.");
     }
     next();
