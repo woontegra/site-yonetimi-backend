@@ -134,7 +134,10 @@ export const adminEmailIntegrationSchema = z.object({
   smtpPassword: z
     .string()
     .optional()
-    .transform((v) => (v && v.trim() ? v : undefined)),
+    .transform((v) => {
+      const trimmed = v?.trim();
+      return trimmed ? trimmed : undefined;
+    }),
   notificationEmail: z.string().trim().email("Geçerli bir bildirim e-postası girin.").toLowerCase(),
   isActive: z.boolean().default(true),
 });

@@ -10,6 +10,18 @@ function required(name: string): string {
   return value;
 }
 
+function sanitizeSecretEnv(value: string | undefined | null): string | null {
+  if (value == null) return null;
+  let next = value.replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+  if (
+    (next.startsWith('"') && next.endsWith('"') && next.length >= 2) ||
+    (next.startsWith("'") && next.endsWith("'") && next.length >= 2)
+  ) {
+    next = next.slice(1, -1).replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+  }
+  return next || null;
+}
+
 function parseEmailList(value: string | undefined): string[] {
   if (!value) return [];
   return value
@@ -68,10 +80,9 @@ export const env = {
   ),
   whatsappGraphApiVersion: process.env.WHATSAPP_GRAPH_API_VERSION ?? "v21.0",
   credentialEncryptionKey:
-    process.env.CREDENTIAL_ENCRYPTION_KEY?.trim() ||
-    process.env.WHATSAPP_CREDENTIAL_ENCRYPTION_KEY?.trim() ||
-    null,
-  whatsappCredentialEncryptionKey: process.env.WHATSAPP_CREDENTIAL_ENCRYPTION_KEY?.trim() || null,
+    sanitizeSecretEnv(process.env.CREDENTIAL_ENCRYPTION_KEY) ||
+    sanitizeSecretEnv(process.env.WHATSAPP_CREDENTIAL_ENCRYPTION_KEY),
+  whatsappCredentialEncryptionKey: sanitizeSecretEnv(process.env.WHATSAPP_CREDENTIAL_ENCRYPTION_KEY),
   whatsappWebhookVerifyToken: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN?.trim() || null,
   metaAppSecret: process.env.META_APP_SECRET?.trim() || null,
   whatsappProviderMode: resolveWhatsAppProviderMode(),

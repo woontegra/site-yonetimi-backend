@@ -1,5 +1,6 @@
 import { env } from "../config/env";
 import { prisma } from "../lib/prisma";
+import { inspectEncryptionRuntime } from "../utils/secret-encryption";
 
 export class AdminSystemService {
   async getStatus() {
@@ -39,6 +40,8 @@ export class AdminSystemService {
       database: { reachable: dbOk },
       environment: env.nodeEnv,
       whatsappProviderMode: env.whatsappProviderMode,
+      emailProviderMode: env.emailProviderMode,
+      encryption: inspectEncryptionRuntime(),
       lastMigration,
       integrations: {
         whatsappTotal,

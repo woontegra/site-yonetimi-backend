@@ -101,8 +101,24 @@ export class PlatformEmailService {
     }
 
     let encryptedSmtpPassword = existing?.encryptedSmtpPassword ?? "";
+    const passwordUpdated = Boolean(input.smtpPassword);
     if (input.smtpPassword) {
       encryptedSmtpPassword = encryptSecret(input.smtpPassword);
+      try {
+        const roundTrip = decryptSecret(encryptedSmtpPassword);
+        if (roundTrip !== input.smtpPassword) {
+          throw new HttpError(400, EMAIL_ERROR_MESSAGES.SMTP_SECRET_DECRYPT_FAILED, "SMTP_SECRET_DECRYPT_FAILED");
+        }
+      } catch (err) {
+        if (err instanceof HttpError) throw err;
+        throw new HttpError(400, EMAIL_ERROR_MESSAGES.SMTP_SECRET_DECRYPT_FAILED, "SMTP_SECRET_DECRYPT_FAILED");
+      }
+    } else if (existing?.encryptedSmtpPassword) {
+      try {
+        decryptSecret(existing.encryptedSmtpPassword);
+      } catch {
+        throw new HttpError(400, EMAIL_ERROR_MESSAGES.SMTP_SECRET_DECRYPT_FAILED, "SMTP_SECRET_DECRYPT_FAILED");
+      }
     }
 
     const data = {
@@ -144,6 +160,7 @@ export class PlatformEmailService {
     return {
       integration: toSafeView(saved),
       securityWarning: securityPortWarning(saved.smtpPort, saved.smtpSecurity),
+      passwordUpdated,
     };
   }
 
