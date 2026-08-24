@@ -12,12 +12,21 @@ function required(name: string): string {
 
 function sanitizeSecretEnv(value: string | undefined | null): string | null {
   if (value == null) return null;
-  let next = value.replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+  let next = value
+    .replace(/^\uFEFF/, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\r/g, "")
+    .trim();
   if (
     (next.startsWith('"') && next.endsWith('"') && next.length >= 2) ||
     (next.startsWith("'") && next.endsWith("'") && next.length >= 2)
   ) {
-    next = next.slice(1, -1).replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+    next = next
+      .slice(1, -1)
+      .replace(/^\uFEFF/, "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\r/g, "")
+      .trim();
   }
   return next || null;
 }

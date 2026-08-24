@@ -7,12 +7,21 @@ const KEY_ENV_NAMES = ["CREDENTIAL_ENCRYPTION_KEY", "WHATSAPP_CREDENTIAL_ENCRYPT
 
 export function sanitizeSecretEnv(value: string | undefined | null): string | null {
   if (value == null) return null;
-  let next = value.replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+  let next = value
+    .replace(/^\uFEFF/, "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\r/g, "")
+    .trim();
   const quoted =
     (next.startsWith('"') && next.endsWith('"') && next.length >= 2) ||
     (next.startsWith("'") && next.endsWith("'") && next.length >= 2);
   if (quoted) {
-    next = next.slice(1, -1).replace(/^\uFEFF/, "").replace(/\r/g, "").trim();
+    next = next
+      .slice(1, -1)
+      .replace(/^\uFEFF/, "")
+      .replace(/[\u200B-\u200D\uFEFF]/g, "")
+      .replace(/\r/g, "")
+      .trim();
   }
   return next || null;
 }
@@ -51,23 +60,30 @@ function getEncryptionKey(): Buffer {
   return resolveKey(raw);
 }
 
+function addKeyBuffer(unique: Buffer[], seen: Set<string>, key: Buffer) {
+  const id = key.toString("hex");
+  if (seen.has(id)) return;
+  seen.add(id);
+  unique.push(key);
+}
+
 function candidateDecryptKeys(): Buffer[] {
   const unique: Buffer[] = [];
   const seen = new Set<string>();
-  const add = (value: string | null) => {
+
+  const addMaterial = (value: string | null) => {
     if (!value) return;
-    const key = resolveKey(value);
-    const id = key.toString("hex");
-    if (seen.has(id)) return;
-    seen.add(id);
-    unique.push(key);
+    addKeyBuffer(unique, seen, resolveKey(value));
+    addKeyBuffer(unique, seen, createHash("sha256").update(value, "utf8").digest());
+    addKeyBuffer(unique, seen, createHash("sha256").update(`"${value}"`, "utf8").digest());
+    addKeyBuffer(unique, seen, createHash("sha256").update(`'${value}'`, "utf8").digest());
   };
 
   for (const name of KEY_ENV_NAMES) {
     const raw = process.env[name];
     if (!raw) continue;
-    add(sanitizeSecretEnv(raw));
-    add(raw.replace(/^\uFEFF/, "").replace(/\r/g, "").trim());
+    addMaterial(sanitizeSecretEnv(raw));
+    addMaterial(raw.replace(/^\uFEFF/, "").replace(/[\u200B-\u200D\uFEFF]/g, "").replace(/\r/g, "").trim());
   }
   return unique;
 }
@@ -106,10 +122,12 @@ export function decryptSecret(ciphertext: string): string {
   }
   const normalized = ciphertext.replace(/^\uFEFF/, "").trim();
   const parts = normalized.split(":");
-  if (parts.length !== 3) {
+  if (parts.length < 3) {
     throw new Error("Geçersiz şifreli veri formatı.");
   }
-  const [ivB64, authTagB64, dataB64] = parts;
+  const ivB64 = parts[0];
+  const authTagB64 = parts[1];
+  const dataB64 = parts.slice(2).join(":");
   let lastError: unknown;
   for (const key of keys) {
     try {
