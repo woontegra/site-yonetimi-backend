@@ -28,6 +28,16 @@ export type EmailIntegrationInput = {
   isActive: boolean;
 };
 
+function passwordDecryptable(ciphertext: string | null | undefined): boolean {
+  if (!ciphertext) return false;
+  try {
+    decryptSecret(ciphertext);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function toSafeView(row: PlatformEmailIntegration) {
   const publicStatus = toPublicEmailStatus(row);
   return {
@@ -41,6 +51,7 @@ function toSafeView(row: PlatformEmailIntegration) {
     smtpSecurity: row.smtpSecurity,
     smtpUsername: row.smtpUsername,
     hasPassword: Boolean(row.encryptedSmtpPassword),
+    passwordDecryptable: passwordDecryptable(row.encryptedSmtpPassword),
     isActive: row.isActive,
     status: row.status,
     publicStatus: publicStatus.status,
