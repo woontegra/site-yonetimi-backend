@@ -25,6 +25,7 @@ import {
   adminTrialSchema,
   adminUserListQuerySchema,
   adminCreateTenantSchema,
+  adminDeleteTenantSchema,
 } from "../validators/admin.validators";
 
 function parse<T>(schema: { safeParse: (data: unknown) => { success: true; data: T } | { success: false; error: { issues: Array<{ message: string }> } } }, data: unknown): T {
@@ -117,6 +118,20 @@ export async function activateAdminTenant(req: Request, res: Response, next: Nex
 export async function deactivateAdminTenant(req: Request, res: Response, next: NextFunction) {
   try {
     res.status(200).json(await adminTenantService.setActive(adminUserIdFrom(req), assertUuidParam(String(req.params.id)), false));
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteAdminTenant(req: Request, res: Response, next: NextFunction) {
+  try {
+    const body = parse(adminDeleteTenantSchema, req.body ?? {});
+    await adminTenantService.permanentlyDelete(
+      adminUserIdFrom(req),
+      assertUuidParam(String(req.params.id)),
+      body.confirmName,
+    );
+    res.status(200).json({ message: "Tenant ve ilişkili verileri kalıcı olarak silindi." });
   } catch (error) {
     next(error);
   }

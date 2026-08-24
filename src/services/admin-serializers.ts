@@ -39,6 +39,7 @@ export function toSubscriptionView(subscription: Subscription | null) {
     cancelledAt: subscription.cancelledAt?.toISOString() ?? null,
     remainingDays: daysUntil(subscription.endsAt),
     note: subscription.note,
+    updatedAt: subscription.updatedAt.toISOString(),
   };
 }
 

@@ -8,6 +8,7 @@ import {
   createAdminUserNote,
   deactivateAdminTenant,
   deactivateAdminUser,
+  deleteAdminTenant,
   extendAdminSubscription,
   extendAdminTenantSubscription,
   getAdminCommunication,
@@ -67,6 +68,7 @@ adminRouter.post("/tenants/:id/notes", createAdminTenantNote);
 adminRouter.get("/tenants/:id/audit-logs", listAdminTenantAuditLogs);
 adminRouter.post("/tenants/:id/activate", activateAdminTenant);
 adminRouter.post("/tenants/:id/deactivate", deactivateAdminTenant);
+adminRouter.delete("/tenants/:id", deleteAdminTenant);
 adminRouter.post("/tenants/:id/subscription/extend", extendAdminTenantSubscription);
 adminRouter.post("/tenants/:id/subscription/trial", trialAdminTenantSubscription);
 adminRouter.post("/tenants/:id/resend-notification", resendAdminTenantNotification);

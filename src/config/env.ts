@@ -18,11 +18,29 @@ function parseEmailList(value: string | undefined): string[] {
     .filter(Boolean);
 }
 
+function parseIdList(value: string | undefined): string[] {
+  if (!value) return [];
+  return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+}
+
+function originFromUrl(value: string | undefined | null): string | null {
+  const raw = value?.trim();
+  if (!raw) return null;
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, "") || null;
+  }
+}
+
 function parseOrigins(value: string): string[] {
-  return value
+  const fromEnv = value
     .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+    .map((item) => originFromUrl(item))
+    .filter((item): item is string => Boolean(item));
+  const fromPublicApp = originFromUrl(process.env.PUBLIC_APP_URL);
+  const productionApp = "https://site.woontegra.com";
+  return [...new Set([...fromEnv, fromPublicApp, productionApp].filter((item): item is string => Boolean(item)))];
 }
 
 function resolveWhatsAppProviderMode(): "mock" | "meta" {
@@ -45,7 +63,9 @@ export const env = {
   databaseUrl: required("DATABASE_URL"),
   jwtSecret: required("JWT_SECRET"),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
-  corsOrigins: parseOrigins(process.env.CORS_ORIGIN ?? "http://localhost:3000,http://localhost:3001"),
+  corsOrigins: parseOrigins(
+    process.env.CORS_ORIGIN ?? "http://localhost:3000,http://localhost:3001",
+  ),
   whatsappGraphApiVersion: process.env.WHATSAPP_GRAPH_API_VERSION ?? "v21.0",
   credentialEncryptionKey:
     process.env.CREDENTIAL_ENCRYPTION_KEY?.trim() ||
@@ -57,6 +77,7 @@ export const env = {
   whatsappProviderMode: resolveWhatsAppProviderMode(),
   whatsappHttpTimeoutMs: Number(process.env.WHATSAPP_HTTP_TIMEOUT_MS ?? 15000),
   platformAdminEmails: parseEmailList(process.env.PLATFORM_ADMIN_EMAILS),
+  protectedTenantIds: parseIdList(process.env.PROTECTED_TENANT_IDS),
   emailProviderMode: resolveEmailProviderMode(),
   emailHttpTimeoutMs: Number(process.env.EMAIL_HTTP_TIMEOUT_MS ?? 15000),
   publicAppUrl: process.env.PUBLIC_APP_URL?.trim() || null,

@@ -8,6 +8,11 @@ import { assertRateLimit } from "../utils/rate-limit";
 import { writeAdminAudit } from "./admin-audit.service";
 import { pickOwner, toSubscriptionView } from "./admin-serializers";
 import { sendTenantWelcomeAndNotify } from "./email/tenant-email.service";
+import {
+  getTenantDeleteCounts,
+  isProtectedTenant,
+  permanentlyDeleteTenant,
+} from "./admin-tenant-delete.service";
 
 const tenantListSelect = {
   id: true,
@@ -194,7 +199,7 @@ export class AdminTenantService {
     });
     if (!tenant) throw new HttpError(404, "Tenant bulunamadı.");
 
-    const [whatsapp, usage] = await Promise.all([
+    const [whatsapp, usage, emailIntegration, isProtected, recordCounts] = await Promise.all([
       prisma.whatsAppIntegration.findFirst({
         where: { tenantId: id, deletedAt: null },
         orderBy: { createdAt: "desc" },
@@ -208,11 +213,21 @@ export class AdminTenantService {
         },
       }),
       this.usageCounts(id),
+      prisma.platformEmailIntegration.findFirst({
+        orderBy: { updatedAt: "desc" },
+        select: { isActive: true, status: true },
+      }),
+      isProtectedTenant(id),
+      getTenantDeleteCounts(id),
     ]);
+
+    const emailConnected = Boolean(emailIntegration?.isActive && emailIntegration.status === "READY");
+    const whatsappConnected = whatsapp?.connectionStatus === "CONNECTED";
 
     return {
       ...serializeTenantListItem(tenant),
       updatedAt: tenant.updatedAt.toISOString(),
+      isProtected,
       whatsapp: whatsapp
         ? {
             id: whatsapp.id,
@@ -222,8 +237,23 @@ export class AdminTenantService {
             lastCheckedAt: whatsapp.lastCheckedAt?.toISOString() ?? null,
           }
         : null,
+      email: {
+        connected: emailConnected,
+        status: emailIntegration?.status ?? null,
+      },
+      integrationSummary: {
+        whatsappConnected,
+        emailConnected,
+        connectedCount: Number(whatsappConnected) + Number(emailConnected),
+      },
       usage,
+      recordCounts,
     };
+  }
+
+  async permanentlyDelete(adminUserId: string, tenantId: string, confirmName: string) {
+    await permanentlyDeleteTenant(adminUserId, tenantId, confirmName);
+    return { ok: true as const };
   }
 
   async listSites(tenantId: string) {

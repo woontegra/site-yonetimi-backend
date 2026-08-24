@@ -84,6 +84,14 @@ export const adminTrialSchema = z.object({
   days: z.number().int().min(1).max(90).default(7),
 });
 
+export const adminDeleteTenantSchema = z.object({
+  confirmName: z
+    .string({ required_error: "Tenant adı zorunludur." })
+    .trim()
+    .min(1, "Tenant adı zorunludur.")
+    .max(120),
+});
+
 export const adminPlanSchema = z.object({
   plan: z.enum(["DEMO", "STANDARD", "PROFESSIONAL"]),
 });
