@@ -26,6 +26,7 @@ model Tenant {
   persons                   Person[]
   apartmentPersonRelations  ApartmentPersonRelation[]
   duesDefinitions           DuesDefinition[]
+  apartmentDuesExemptions   ApartmentDuesExemption[]
   apartmentDebts            ApartmentDebt[]
   payments                  Payment[]
   paymentAllocations        PaymentAllocation[]
@@ -35,6 +36,7 @@ model Tenant {
   bankAccounts              BankAccount[]
   bankTransactions          BankTransaction[]
   bankMatchingRules         BankMatchingRule[]
+  bankColumnMappingTemplates BankColumnMappingTemplate[]
   suppliers                 Supplier[]
   employees                 Employee[]
   employeeAssignments       EmployeeAssignment[]
@@ -82,6 +84,8 @@ model User {
   activationTokens UserActivationToken[]
   emailDeliveries  EmailDelivery[]
   platformEmailUpdates PlatformEmailIntegration[]
+  duesExemptionsCreated ApartmentDuesExemption[] @relation("ApartmentDuesExemptionCreatedBy")
+  duesExemptionsRevoked ApartmentDuesExemption[] @relation("ApartmentDuesExemptionRevokedBy")
 
   @@map("users")
 }
@@ -188,6 +192,7 @@ model Site {
   expenses            Expense[]
   bankAccounts        BankAccount[]
   bankMatchingRules   BankMatchingRule[]
+  bankColumnMappingTemplates BankColumnMappingTemplate[]
   employeeAssignments EmployeeAssignment[]
   assets              Asset[]
   assetMovements      AssetMovement[]
@@ -197,6 +202,7 @@ model Site {
   feedbackStatusHistories FeedbackStatusHistory[]
   communicationBatches    CommunicationBatch[]
   communicationMessages   CommunicationMessage[]
+  apartmentDuesExemptions ApartmentDuesExemption[]
 
   @@index([tenantId, deletedAt])
   @@index([tenantId, isActive])
@@ -260,6 +266,7 @@ model Apartment {
   building  Building                  @relation(fields: [buildingId], references: [id], onDelete: Restrict)
   relations ApartmentPersonRelation[]
   debts     ApartmentDebt[]
+  duesExemptions ApartmentDuesExemption[]
   payments  Payment[]
   matchedBankTransactions BankTransaction[] @relation("BankTxMatchedApartment")
   bankMatchingRules       BankMatchingRule[]
@@ -336,21 +343,68 @@ model ApartmentPersonRelation {
   @@map("apartment_person_relations")
 }
 
+enum ApartmentDuesExemptionType {
+  FULL
+  PERCENT
+  FIXED
+}
+
+enum ApartmentDuesExemptionReason {
+  MANAGER
+  STAFF
+  BOARD_DECISION
+  OTHER
+}
+
+/// Daire bazlı aidat muafiyeti / indirimi. Geçmiş borçları değiştirmez.
+model ApartmentDuesExemption {
+  id              String                       @id @default(uuid())
+  tenantId        String
+  siteId          String
+  apartmentId     String
+  exemptionType   ApartmentDuesExemptionType
+  /// PERCENT: 0–100; FIXED: TL tutarı. FULL için null.
+  value           Decimal?                     @db.Decimal(12, 2)
+  startDate       DateTime
+  endDate         DateTime?
+  reason          ApartmentDuesExemptionReason
+  note            String?
+  isActive        Boolean                      @default(true)
+  createdByUserId String
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  revokedAt       DateTime?
+  revokedByUserId String?
+
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site          Site      @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  apartment     Apartment @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  createdByUser User      @relation("ApartmentDuesExemptionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  revokedByUser User?     @relation("ApartmentDuesExemptionRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, siteId, isActive])
+  @@index([apartmentId, isActive, startDate, endDate])
+  @@index([tenantId, apartmentId, isActive])
+  @@map("apartment_dues_exemptions")
+}
+
 /// Dönemsel aidat tanımı. Gerçek finansal kayıt ApartmentDebt'tir.
 model DuesDefinition {
-  id          String    @id @default(uuid())
-  tenantId    String
-  buildingId  String
-  name        String
-  amount      Decimal   @db.Decimal(12, 2)
-  periodYear  Int
-  periodMonth Int
-  dueDate     DateTime
-  description String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  id                String    @id @default(uuid())
+  tenantId          String
+  buildingId        String
+  name              String
+  amount            Decimal   @db.Decimal(12, 2)
+  periodYear        Int
+  periodMonth       Int
+  dueDate           DateTime
+  description       String?
+  isActive          Boolean   @default(true)
+  /** Aynı toplu borçlandırma isteğinden oluşan tanımları gruplar. */
+  assessmentBatchId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
 
   tenant   Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   building Building        @relation(fields: [buildingId], references: [id], onDelete: Restrict)
@@ -358,6 +412,7 @@ model DuesDefinition {
 
   @@index([tenantId, deletedAt])
   @@index([buildingId, periodYear, periodMonth])
+  @@index([tenantId, assessmentBatchId])
   @@map("dues_definitions")
 }
 
@@ -609,6 +664,7 @@ model BankAccount {
   site         Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
   transactions BankTransaction[]
   matchingRules BankMatchingRule[]
+  columnMappingTemplates BankColumnMappingTemplate[]
 
   @@index([tenantId, deletedAt])
   @@index([siteId, deletedAt])
@@ -621,6 +677,8 @@ model BankTransaction {
   tenantId              String
   bankAccountId         String
   externalTransactionId String?
+  /// Import mükerrer koruması. Manuel kayıtlarda null olabilir.
+  importFingerprint     String?
   transactionDate       DateTime
   valueDate             DateTime?
   direction             BankTransactionDirection
@@ -648,11 +706,34 @@ model BankTransaction {
   matchedPerson    Person?      @relation("BankTxMatchedPerson", fields: [matchedPersonId], references: [id], onDelete: SetNull)
   payment          Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
+  @@unique([tenantId, bankAccountId, importFingerprint])
   @@index([tenantId, matchStatus])
   @@index([bankAccountId, transactionDate])
   @@index([tenantId, status])
   @@index([externalTransactionId])
   @@map("bank_transactions")
+}
+
+/// Banka ekstresi kolon eşleme şablonu (tenant/site izolasyonlu).
+model BankColumnMappingTemplate {
+  id            String    @id @default(uuid())
+  tenantId      String
+  siteId        String
+  bankAccountId String?
+  name          String
+  /// { date, description, amount?, debit?, credit?, reference?, balance?, valueDate? }
+  mapping       Json
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site        Site         @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, siteId, deletedAt])
+  @@index([bankAccountId, deletedAt])
+  @@map("bank_column_mapping_templates")
 }
 
 model BankMatchingRule {

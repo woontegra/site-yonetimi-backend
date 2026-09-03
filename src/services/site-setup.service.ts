@@ -224,6 +224,14 @@ export class SiteSetupService {
   async bulkCreateApartments(tenantId: string, siteId: string, input: BulkApartmentsInput) {
     await assertBuildingInSite(tenantId, siteId, input.buildingId);
 
+    const building = await prisma.building.findFirst({
+      where: { id: input.buildingId, tenantId, siteId },
+      select: { id: true, deletedAt: true, isActive: true },
+    });
+    if (!building || building.deletedAt != null || !building.isActive) {
+      throw new HttpError(400, "Silinmiş veya aktif olmayan bir binaya daire eklenemez.");
+    }
+
     const result = await prisma.$transaction(async (tx) => {
       await this.markSetupInProgressTx(tx, tenantId, siteId);
 

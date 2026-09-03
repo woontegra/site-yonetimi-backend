@@ -134,6 +134,22 @@ export class BuildingService {
   async remove(tenantId: string, siteId: string, id: string) {
     await this.getById(tenantId, siteId, id);
 
+    // Soft-delete binada canlı daire bırakmayı engelle (yetim kayıt).
+    const liveApartmentCount = await prisma.apartment.count({
+      where: {
+        tenantId,
+        buildingId: id,
+        deletedAt: null,
+      },
+    });
+
+    if (liveApartmentCount > 0) {
+      throw new HttpError(
+        409,
+        `Bu binada ${liveApartmentCount} daire kaydı bulunduğu için bina silinemez. Önce daireleri başka binaya taşıyın veya arşivleyin; aksi halde daireler görünmez kalır.`,
+      );
+    }
+
     const result = await prisma.building.updateMany({
       where: { id, tenantId, siteId, deletedAt: null },
       data: {

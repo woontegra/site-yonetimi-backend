@@ -1,4 +1,6 @@
 import dotenv from "dotenv";
+import { createHash } from "crypto";
+import { resolveExpiresIn } from "../lib/jwt-expires";
 
 dotenv.config();
 
@@ -78,12 +80,35 @@ function resolveEmailProviderMode(): "mock" | "smtp" {
   return nodeEnv === "production" ? "smtp" : "mock";
 }
 
+const jwtSecret = required("JWT_SECRET");
+const jwtRefreshSecretExplicit = sanitizeSecretEnv(process.env.JWT_REFRESH_SECRET);
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? "development",
   port: Number(process.env.PORT ?? 4100),
   databaseUrl: required("DATABASE_URL"),
-  jwtSecret: required("JWT_SECRET"),
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
+  jwtSecret,
+  /**
+   * Access token süresi.
+   * - Varsayılan: 15m
+   * - Saf sayı = saniye (örn. 900 → 15 dk)
+   * - Birimli string: 15m, 7d, 1h
+   * Env: JWT_EXPIRES_IN (mevcut ad korunur)
+   */
+  jwtAccessExpiresIn: resolveExpiresIn(process.env.JWT_EXPIRES_IN, "15m"),
+  /**
+   * Refresh token süresi. Varsayılan 7d.
+   * Env: JWT_REFRESH_EXPIRES_IN
+   */
+  jwtRefreshExpiresIn: resolveExpiresIn(process.env.JWT_REFRESH_EXPIRES_IN, "7d"),
+  /**
+   * Refresh imza anahtarı. Yoksa JWT_SECRET'tan türetilir (access ile karışmasın).
+   * Env: JWT_REFRESH_SECRET
+   */
+  jwtRefreshSecret:
+    jwtRefreshSecretExplicit ||
+    createHash("sha256").update(`refresh:${jwtSecret}`).digest("hex"),
+  jwtRefreshSecretFromEnv: Boolean(jwtRefreshSecretExplicit),
   corsOrigins: parseOrigins(
     process.env.CORS_ORIGIN ?? "http://localhost:3000,http://localhost:3001",
   ),

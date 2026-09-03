@@ -114,13 +114,33 @@ export class BankAccountService {
 
   async create(tenantId: string, siteId: string, input: CreateBankAccountInput) {
     const opening = new Prisma.Decimal(input.openingBalance ?? 0);
+    const normalizedIban = input.iban?.replace(/\s+/g, "").toUpperCase() || undefined;
+
+    if (normalizedIban) {
+      if (!/^TR\d{24}$/i.test(normalizedIban) && !/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/i.test(normalizedIban)) {
+        throw new HttpError(400, "IBAN formatı geçersiz.");
+      }
+      const duplicate = await prisma.bankAccount.findFirst({
+        where: {
+          tenantId,
+          siteId,
+          deletedAt: null,
+          iban: normalizedIban,
+        },
+        select: { id: true },
+      });
+      if (duplicate) {
+        throw new HttpError(409, "Bu IBAN bu sitede zaten kayıtlı.");
+      }
+    }
+
     const row = await prisma.bankAccount.create({
       data: {
         tenantId,
         siteId,
         bankName: input.bankName.trim(),
         accountName: input.accountName.trim(),
-        iban: input.iban?.replace(/\s+/g, "").toUpperCase(),
+        iban: normalizedIban,
         accountNumber: input.accountNumber,
         branchName: input.branchName,
         openingBalance: opening,

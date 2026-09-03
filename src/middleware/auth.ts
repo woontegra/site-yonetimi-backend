@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import type { UserRole } from "@prisma/client";
 import { verifyAccessToken } from "../lib/jwt";
 import { HttpError } from "../utils/httpError";
 
@@ -17,7 +18,7 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction): v
       userId: payload.sub,
       email: payload.email,
       tenantId: payload.tenantId,
-      role: payload.role,
+      role: (payload.role as UserRole | null) ?? null,
     };
     next();
   } catch (error) {

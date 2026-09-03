@@ -179,6 +179,20 @@ export async function ignoreBankTransaction(req: Request, res: Response, next: N
   }
 }
 
+export async function unmatchBankTransaction(req: Request, res: Response, next: NextFunction) {
+  try {
+    assertSiteActive(req);
+    const bankTransaction = await bankTransactionService.unmatch(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      String(req.params.id),
+    );
+    res.status(200).json({ bankTransaction });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function listBankMatchingRules(req: Request, res: Response, next: NextFunction) {
   try {
     const parsed = listBankMatchingRulesQuerySchema.safeParse(req.query);

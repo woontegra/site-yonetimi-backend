@@ -1,7 +1,14 @@
 import bcrypt from "bcryptjs";
 import type { UserRole } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { signAccessToken } from "../lib/jwt";
+import { env } from "../config/env";
+import {
+  describeExpiresIn,
+  expiresInToSeconds,
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+} from "../lib/jwt";
 import { effectivePermissions } from "../permissions/catalog";
 import { grantPlatformAdminIfListed } from "./platform-admin.service";
 import { HttpError } from "../utils/httpError";
@@ -37,12 +44,47 @@ export type PublicUser = {
   }>;
 };
 
+export type AuthTokens = {
+  token: string;
+  refreshToken: string;
+  expiresIn: number;
+  tokenType: "Bearer";
+};
+
 function usableMemberships(items: MembershipWithAccess[]) {
   return items.filter((item) => item.tenant.isActive && item.status === "ACTIVE");
 }
 
+function accessExpiresInSeconds(): number {
+  return expiresInToSeconds(env.jwtAccessExpiresIn) ?? 15 * 60;
+}
+
+function issueTokens(input: {
+  userId: string;
+  email: string;
+  tenantId: string | null;
+  role: UserRole | null;
+}): AuthTokens {
+  const token = signAccessToken({
+    sub: input.userId,
+    email: input.email,
+    tenantId: input.tenantId,
+    role: input.role,
+  });
+  const refreshToken = signRefreshToken({
+    sub: input.userId,
+    email: input.email,
+  });
+  return {
+    token,
+    refreshToken,
+    expiresIn: accessExpiresInSeconds(),
+    tokenType: "Bearer",
+  };
+}
+
 export class AuthService {
-  async login(email: string, password: string): Promise<{ token: string; user: PublicUser }> {
+  async login(email: string, password: string): Promise<AuthTokens & { user: PublicUser }> {
     const user = await prisma.user.findUnique({
       where: { email: email.toLowerCase().trim() },
       include: { memberships: { include: membershipInclude } },
@@ -76,20 +118,18 @@ export class AuthService {
     }
     const primary = activeMemberships[0];
 
-    const token = signAccessToken({
-      sub: refreshed.id,
-      email: refreshed.email,
-      tenantId: primary.tenantId,
-      role: primary.role,
-    });
-
     return {
-      token,
+      ...issueTokens({
+        userId: refreshed.id,
+        email: refreshed.email,
+        tenantId: primary.tenantId,
+        role: primary.role,
+      }),
       user: this.toPublicUser(refreshed, activeMemberships),
     };
   }
 
-  async previewSession(): Promise<{ token: string; user: PublicUser }> {
+  async previewSession(): Promise<AuthTokens & { user: PublicUser }> {
     const tenant = await prisma.tenant.upsert({
       where: { slug: "dev-site" },
       update: {},
@@ -157,17 +197,55 @@ export class AuthService {
     });
 
     const activeMemberships = usableMemberships(refreshed.memberships);
-    const primary = activeMemberships.find((item) => item.tenantId === tenant.id) ?? activeMemberships[0] ?? null;
-
-    const token = signAccessToken({
-      sub: refreshed.id,
-      email: refreshed.email,
-      tenantId: primary?.tenantId ?? tenant.id,
-      role: primary?.role ?? "ORGANIZASYON_SAHIBI",
-    });
+    const primary =
+      activeMemberships.find((item) => item.tenantId === tenant.id) ?? activeMemberships[0] ?? null;
 
     return {
-      token,
+      ...issueTokens({
+        userId: refreshed.id,
+        email: refreshed.email,
+        tenantId: primary?.tenantId ?? tenant.id,
+        role: primary?.role ?? "ORGANIZASYON_SAHIBI",
+      }),
+      user: this.toPublicUser(refreshed, activeMemberships),
+    };
+  }
+
+  async refresh(refreshToken: string): Promise<AuthTokens & { user: PublicUser }> {
+    let payload;
+    try {
+      payload = verifyRefreshToken(refreshToken);
+    } catch {
+      throw new HttpError(401, "Oturumunuz sona erdi. Lütfen yeniden giriş yapın.");
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.sub },
+      include: { memberships: { include: membershipInclude } },
+    });
+
+    if (!user || !user.isActive || user.email !== payload.email) {
+      throw new HttpError(401, "Oturumunuz sona erdi. Lütfen yeniden giriş yapın.");
+    }
+
+    await grantPlatformAdminIfListed(user.email);
+    const refreshed = await prisma.user.findUniqueOrThrow({
+      where: { id: user.id },
+      include: { memberships: { include: membershipInclude } },
+    });
+    const activeMemberships = usableMemberships(refreshed.memberships);
+    if (activeMemberships.length === 0) {
+      throw new HttpError(401, "Oturumunuz sona erdi. Lütfen yeniden giriş yapın.");
+    }
+    const primary = activeMemberships[0];
+
+    return {
+      ...issueTokens({
+        userId: refreshed.id,
+        email: refreshed.email,
+        tenantId: primary.tenantId,
+        role: primary.role,
+      }),
       user: this.toPublicUser(refreshed, activeMemberships),
     };
   }
@@ -219,3 +297,9 @@ export class AuthService {
 }
 
 export const authService = new AuthService();
+
+export function logAuthRuntimeSafely(): void {
+  console.info(
+    `[auth] accessExpiresIn=${describeExpiresIn(env.jwtAccessExpiresIn)} refreshExpiresIn=${describeExpiresIn(env.jwtRefreshExpiresIn)} jwtSecretConfigured=true refreshSecretFromEnv=${env.jwtRefreshSecretFromEnv} nodeEnv=${env.nodeEnv}`,
+  );
+}

@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { bankTextContains } from "../utils/bank-text";
+import { suggestStatementMatch } from "../utils/bank-statement-match";
 import {
   assertApartmentInSite,
   assertBankAccountInSite,
@@ -131,44 +131,19 @@ async function applyMatchingRules(
   bankAccountId: string,
   description: string,
 ): Promise<{ apartmentId: string | null; personId: string | null; matchStatus: "UNMATCHED" | "SUGGESTED" }> {
-  const rules = await prisma.bankMatchingRule.findMany({
-    where: {
-      tenantId,
-      siteId,
-      deletedAt: null,
-      isActive: true,
-      OR: [{ bankAccountId }, { bankAccountId: null }],
-    },
-    orderBy: [{ priority: "asc" }, { createdAt: "asc" }],
-    select: {
-      id: true,
-      containsText: true,
-      apartmentId: true,
-      personId: true,
-      priority: true,
-    },
-  });
-
-  const hits = rules.filter((rule) => bankTextContains(description, rule.containsText));
-  if (hits.length === 0) {
-    return { apartmentId: null, personId: null, matchStatus: "UNMATCHED" };
+  const suggestion = await suggestStatementMatch(tenantId, siteId, bankAccountId, description);
+  if (
+    suggestion.matchStatus === "SUGGESTED" &&
+    suggestion.apartmentId &&
+    suggestion.confidence !== "LOW"
+  ) {
+    return {
+      apartmentId: suggestion.apartmentId,
+      personId: suggestion.personId,
+      matchStatus: "SUGGESTED",
+    };
   }
-
-  const apartmentIds = new Set(hits.map((h) => h.apartmentId).filter(Boolean));
-  if (apartmentIds.size > 1) {
-    return { apartmentId: null, personId: null, matchStatus: "UNMATCHED" };
-  }
-
-  const best = hits[0];
-  if (!best.apartmentId) {
-    return { apartmentId: null, personId: null, matchStatus: "UNMATCHED" };
-  }
-
-  return {
-    apartmentId: best.apartmentId,
-    personId: best.personId,
-    matchStatus: "SUGGESTED",
-  };
+  return { apartmentId: null, personId: null, matchStatus: "UNMATCHED" };
 }
 
 const siteAccountWhere = (siteId: string) =>
@@ -402,6 +377,45 @@ export class BankTransactionService {
     });
 
     return this.getById(tenantId, siteId, id);
+  }
+
+  /**
+   * Eşleştirmeyi geri alır. PROCESSED + payment varsa önce tahsilat iptali gerekir.
+   * Payment iptalinden sonra MATCHED kalan hareketi UNMATCHED'e çeker.
+   */
+  async unmatch(tenantId: string, siteId: string, id: string) {
+    const current = await prisma.bankTransaction.findFirst({
+      where: { id, tenantId, ...siteAccountWhere(siteId) },
+      select: {
+        id: true,
+        status: true,
+        matchStatus: true,
+        paymentId: true,
+      },
+    });
+    if (!current) throw new HttpError(404, "Banka hareketi bulunamadı.");
+    if (current.status === "IGNORED") {
+      throw new HttpError(400, "Yoksayılan hareketin eşleştirmesi geri alınamaz.");
+    }
+    if (current.matchStatus === "PROCESSED" || current.paymentId) {
+      throw new HttpError(
+        400,
+        "Önce bağlı tahsilatı iptal edin; ardından eşleştirmeyi geri alabilirsiniz.",
+      );
+    }
+
+    const row = await prisma.bankTransaction.update({
+      where: { id },
+      data: {
+        matchedApartmentId: null,
+        matchedPersonId: null,
+        matchStatus: "UNMATCHED",
+        matchedAt: null,
+      },
+      select: txSelect,
+    });
+
+    return mapTx(row);
   }
 
   async ignore(tenantId: string, siteId: string, id: string) {

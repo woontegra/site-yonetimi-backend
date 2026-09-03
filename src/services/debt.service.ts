@@ -118,6 +118,7 @@ function buildWhere(
 
   if (query.buildingId) where.buildingId = query.buildingId;
   if (query.apartmentId) where.apartmentId = query.apartmentId;
+  if (query.duesDefinitionId) where.duesDefinitionId = query.duesDefinitionId;
   if (query.type) where.type = query.type;
   if (query.status) where.status = query.status;
   if (query.periodYear) where.periodYear = query.periodYear;

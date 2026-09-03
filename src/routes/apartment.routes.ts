@@ -19,3 +19,5 @@ apartmentRouter.get("/:id", getApartment);
 apartmentRouter.post("/", createApartment);
 apartmentRouter.patch("/:id", updateApartment);
 apartmentRouter.delete("/:id", deleteApartment);
+
+// Nested exemption routes live on apartmentDuesExemptionRouter at /api level.

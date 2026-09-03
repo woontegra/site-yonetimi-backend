@@ -20,13 +20,21 @@ function firstZodMessage(error: { issues: Array<{ message: string }> }): string 
   return error.issues[0]?.message ?? "Geçersiz istek.";
 }
 
+function canIncludePhone(req: Request): boolean {
+  const permissions = req.auth?.permissions ?? [];
+  if (permissions.length === 0) return true;
+  return permissions.includes("persons.view") || permissions.includes("apartments.view");
+}
+
 export async function listApartments(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const parsed = listApartmentsQuerySchema.safeParse(req.query);
     if (!parsed.success) {
       throw new HttpError(400, firstZodMessage(parsed.error));
     }
-    const result = await apartmentService.list(tenantIdFrom(req), siteIdFrom(req), parsed.data);
+    const result = await apartmentService.list(tenantIdFrom(req), siteIdFrom(req), parsed.data, {
+      includePhone: canIncludePhone(req),
+    });
     res.status(200).json(result);
   } catch (error) {
     next(error);
@@ -39,6 +47,7 @@ export async function getApartment(req: Request, res: Response, next: NextFuncti
       tenantIdFrom(req),
       siteIdFrom(req),
       String(req.params.id),
+      { includePhone: canIncludePhone(req) },
     );
     res.status(200).json({ apartment });
   } catch (error) {

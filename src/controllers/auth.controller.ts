@@ -12,6 +12,10 @@ const loginSchema = z.object({
   password: z.string().min(1, "Şifre gerekli."),
 });
 
+const refreshSchema = z.object({
+  refreshToken: z.string().trim().min(20, "Yenileme oturumu geçersiz."),
+});
+
 const activationTokenSchema = z.object({
   token: z.string().trim().min(16, "Aktivasyon bağlantısı geçersiz."),
 });
@@ -21,7 +25,10 @@ const activateSchema = activationTokenSchema.extend({
     .string()
     .min(8, "Şifre en az 8 karakter olmalı ve harf ile rakam içermelidir.")
     .max(128)
-    .refine((value) => /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(value) && /\d/.test(value), "Şifre en az 8 karakter olmalı ve harf ile rakam içermelidir."),
+    .refine(
+      (value) => /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(value) && /\d/.test(value),
+      "Şifre en az 8 karakter olmalı ve harf ile rakam içermelidir.",
+    ),
 });
 
 function clientKey(req: Request): string {
@@ -36,6 +43,19 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     }
 
     const result = await authService.login(parsed.data.email, parsed.data.password);
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function refresh(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const parsed = refreshSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw new HttpError(401, "Oturumunuz sona erdi. Lütfen yeniden giriş yapın.");
+    }
+    const result = await authService.refresh(parsed.data.refreshToken);
     res.status(200).json(result);
   } catch (error) {
     next(error);
@@ -72,7 +92,11 @@ export async function peekActivation(req: Request, res: Response, next: NextFunc
     assertRateLimit(`activation-peek:${clientKey(req)}`, 40, 15 * 60 * 1000);
     const parsed = activationTokenSchema.safeParse({ token: req.query.token });
     if (!parsed.success) {
-      throw new HttpError(400, parsed.error.issues[0]?.message ?? "Aktivasyon bağlantısı geçersiz.", "ACTIVATION_TOKEN_FAILED");
+      throw new HttpError(
+        400,
+        parsed.error.issues[0]?.message ?? "Aktivasyon bağlantısı geçersiz.",
+        "ACTIVATION_TOKEN_FAILED",
+      );
     }
     const peeked = await peekActivationToken(parsed.data.token);
     if (!peeked.ok) {
@@ -95,7 +119,11 @@ export async function activateAccount(req: Request, res: Response, next: NextFun
     assertRateLimit(`activation-post:${clientKey(req)}`, 12, 15 * 60 * 1000);
     const parsed = activateSchema.safeParse(req.body);
     if (!parsed.success) {
-      throw new HttpError(400, parsed.error.issues[0]?.message ?? "Geçersiz istek.", "ACTIVATION_TOKEN_FAILED");
+      throw new HttpError(
+        400,
+        parsed.error.issues[0]?.message ?? "Geçersiz istek.",
+        "ACTIVATION_TOKEN_FAILED",
+      );
     }
     const result = await completeActivation(parsed.data.token, parsed.data.password);
     res.status(200).json({ ok: true, email: result.email });

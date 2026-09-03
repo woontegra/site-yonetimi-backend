@@ -70,7 +70,7 @@ export const updateApartmentSchema = z.object({
 export const listApartmentsQuerySchema = z.object({
   search: z.string().trim().optional().transform((value) => value || undefined),
   page: z.coerce.number().int().min(1).default(1),
-  perPage: z.coerce.number().int().min(1).max(100).default(20),
+  perPage: z.coerce.number().int().min(1).max(500).default(20),
   buildingId: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.string().uuid().optional(),
