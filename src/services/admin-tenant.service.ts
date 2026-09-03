@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import type { Prisma, SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { HttpError } from "../utils/httpError";
-import { addDays, slugifyTenantName } from "../utils/admin";
+import { addDays, addMonths, addYears, slugifyTenantName } from "../utils/admin";
 import { assertRateLimit } from "../utils/rate-limit";
 import { writeAdminAudit } from "./admin-audit.service";
 import { pickOwner, toSubscriptionView } from "./admin-serializers";
@@ -110,8 +110,10 @@ export class AdminTenantService {
       name: string;
       managerFullName: string;
       managerEmail: string;
-      plan?: SubscriptionPlan;
+      plan?: "DEMO" | "PROFESSIONAL";
       trialDays?: number;
+      licenseTerm?: "1m" | "3m" | "6m" | "1y" | "custom";
+      endsAt?: Date;
     },
   ) {
     assertRateLimit(`tenant-create:${adminUserId}`, 20, 15 * 60 * 1000);
@@ -119,7 +121,6 @@ export class AdminTenantService {
     const managerFullName = input.managerFullName.trim();
     const managerEmail = input.managerEmail.trim().toLowerCase();
     const plan = input.plan ?? "DEMO";
-    const trialDays = input.trialDays ?? 14;
 
     const existingUser = await prisma.user.findUnique({ where: { email: managerEmail } });
     if (existingUser) {
@@ -129,7 +130,21 @@ export class AdminTenantService {
     const slug = await this.uniqueSlug(slugifyTenantName(name));
     const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
     const now = new Date();
-    const endsAt = addDays(now, trialDays);
+    const paid = plan === "PROFESSIONAL";
+    const trialDays = paid ? null : (input.trialDays ?? 7);
+    let endsAt: Date;
+    if (paid) {
+      const term = input.licenseTerm ?? "1y";
+      if (term === "custom") {
+        if (!input.endsAt) throw new HttpError(400, "Özel bitiş tarihi zorunludur.");
+        endsAt = input.endsAt;
+      } else if (term === "1m") endsAt = addMonths(now, 1);
+      else if (term === "3m") endsAt = addMonths(now, 3);
+      else if (term === "6m") endsAt = addMonths(now, 6);
+      else endsAt = addYears(now, 1);
+    } else {
+      endsAt = addDays(now, trialDays ?? 7);
+    }
 
     const created = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -150,10 +165,10 @@ export class AdminTenantService {
         data: {
           tenantId: tenant.id,
           plan,
-          status: "TRIAL",
+          status: paid ? "ACTIVE" : "TRIAL",
           startsAt: now,
           endsAt,
-          trialEndsAt: endsAt,
+          trialEndsAt: paid ? null : endsAt,
         },
       });
       return { tenantId: tenant.id, userId: user.id };
@@ -165,7 +180,13 @@ export class AdminTenantService {
       targetType: "Tenant",
       targetId: created.tenantId,
       tenantId: created.tenantId,
-      metadata: { plan, trialDays, managerEmailMasked: managerEmail.replace(/^(.{2}).*(@.*)$/, "$1***$2") },
+      metadata: {
+        plan,
+        trialDays,
+        licenseTerm: paid ? (input.licenseTerm ?? "1y") : null,
+        endsAt: endsAt.toISOString(),
+        managerEmailMasked: managerEmail.replace(/^(.{2}).*(@.*)$/, "$1***$2"),
+      },
     });
 
     let emails: Awaited<ReturnType<typeof sendTenantWelcomeAndNotify>> | null = null;

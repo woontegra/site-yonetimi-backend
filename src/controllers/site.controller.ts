@@ -4,10 +4,12 @@ import { siteService } from "../services/site.service";
 import { allowedSiteIdsFrom } from "../middleware/tenant";
 import { HttpError } from "../utils/httpError";
 import {
+  confirmSiteDeleteSchema,
   createSiteSchema,
   listSitesQuerySchema,
   updateSiteSchema,
 } from "../validators/site.validators";
+import { getSiteDeletePreview, permanentlyDeleteSite } from "../services/site-purge.service";
 
 function tenantIdFrom(req: Request): string {
   const tenantId = req.auth?.tenantId;
@@ -79,10 +81,34 @@ export async function updateSite(req: Request, res: Response, next: NextFunction
   }
 }
 
+export async function previewSiteDelete(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const tenantId = tenantIdFrom(req);
+    const id = String(req.params.id);
+    const allowed = allowedSiteIdsFrom(req);
+    if (allowed && !allowed.includes(id)) {
+      throw new HttpError(403, "Bu siteye erişim yetkiniz yok.");
+    }
+    res.status(200).json(await getSiteDeletePreview(tenantId, id));
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function deleteSite(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await siteService.softDelete(tenantIdFrom(req), String(req.params.id));
-    res.status(204).send();
+    const parsed = confirmSiteDeleteSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      throw new HttpError(400, firstZodMessage(parsed.error));
+    }
+    const tenantId = tenantIdFrom(req);
+    const id = String(req.params.id);
+    const allowed = allowedSiteIdsFrom(req);
+    if (allowed && !allowed.includes(id)) {
+      throw new HttpError(403, "Bu siteye erişim yetkiniz yok.");
+    }
+    await permanentlyDeleteSite(tenantId, id, parsed.data.confirmName);
+    res.status(200).json({ message: "Site ve ilişkili kayıtları kalıcı olarak silindi." });
   } catch (error) {
     next(error);
   }

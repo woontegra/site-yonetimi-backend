@@ -72,6 +72,18 @@ export function addDays(date: Date, days: number): Date {
   return next;
 }
 
+export function addMonths(date: Date, months: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCMonth(next.getUTCMonth() + months);
+  return next;
+}
+
+export function addYears(date: Date, years: number): Date {
+  const next = new Date(date.getTime());
+  next.setUTCFullYear(next.getUTCFullYear() + years);
+  return next;
+}
+
 export function assertUuidParam(id: string, message = "Geçersiz kayıt."): string {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
     throw new HttpError(400, message);

@@ -27,6 +27,13 @@ export const updateSiteSchema = createSiteSchema.partial().extend({
   isActive: z.boolean().optional(),
 });
 
+export const confirmSiteDeleteSchema = z.object({
+  confirmName: z
+    .string({ required_error: "Site adı zorunludur." })
+    .trim()
+    .min(1, "Site adı zorunludur.")
+    .max(200),
+});
 export type ListSitesQuery = z.infer<typeof listSitesQuerySchema>;
 export type CreateSiteInput = z.infer<typeof createSiteSchema>;
 export type UpdateSiteInput = z.infer<typeof updateSiteSchema>;

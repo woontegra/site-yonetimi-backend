@@ -127,7 +127,7 @@ export async function cancelAnnouncement(req: Request, res: Response, next: Next
 export async function deleteAnnouncement(req: Request, res: Response, next: NextFunction) {
   try {
     assertSiteActive(req);
-    const result = await announcementService.softDelete(
+    const result = await announcementService.hardDelete(
       tenantIdFrom(req),
       siteIdFrom(req),
       String(req.params.id),

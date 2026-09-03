@@ -177,9 +177,20 @@ export async function changeAssetLocation(req: Request, res: Response, next: Nex
   }
 }
 
+export async function archiveAsset(req: Request, res: Response, next: NextFunction) {
+  try {
+    assertSiteActive(req);
+    await assetService.softDelete(tenantIdFrom(req), siteIdFrom(req), String(req.params.id));
+    res.status(200).json({ ok: true });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function deleteAsset(req: Request, res: Response, next: NextFunction) {
   try {
-    await assetService.softDelete(tenantIdFrom(req), siteIdFrom(req), String(req.params.id));
+    assertSiteActive(req);
+    await assetService.hardDelete(tenantIdFrom(req), siteIdFrom(req), String(req.params.id));
     res.status(200).json({ ok: true });
   } catch (error) {
     next(error);

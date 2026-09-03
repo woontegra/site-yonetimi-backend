@@ -100,25 +100,39 @@ export const adminEndsAtSchema = z.object({
   endsAt: z.coerce.date({ required_error: "Bitiş tarihi zorunludur." }),
 });
 
-export const adminCreateTenantSchema = z.object({
-  name: z
-    .string({ required_error: "Organizasyon adı zorunludur." })
-    .trim()
-    .min(2, "Organizasyon adı en az 2 karakter olmalıdır.")
-    .max(120, "Organizasyon adı en fazla 120 karakter olabilir."),
-  managerFullName: z
-    .string({ required_error: "Yönetici adı soyadı zorunludur." })
-    .trim()
-    .min(2, "Yönetici adı soyadı zorunludur.")
-    .max(120),
-  managerEmail: z
-    .string({ required_error: "Yönetici e-posta adresi zorunludur." })
-    .trim()
-    .email("Geçerli bir e-posta girin.")
-    .toLowerCase(),
-  plan: z.enum(["DEMO", "STANDARD", "PROFESSIONAL"]).default("DEMO"),
-  trialDays: z.number().int().min(1).max(90).default(14),
-});
+export const adminCreateTenantSchema = z
+  .object({
+    name: z
+      .string({ required_error: "Organizasyon adı zorunludur." })
+      .trim()
+      .min(2, "Organizasyon adı en az 2 karakter olmalıdır.")
+      .max(120, "Organizasyon adı en fazla 120 karakter olabilir."),
+    managerFullName: z
+      .string({ required_error: "Yönetici adı soyadı zorunludur." })
+      .trim()
+      .min(2, "Yönetici adı soyadı zorunludur.")
+      .max(120),
+    managerEmail: z
+      .string({ required_error: "Yönetici e-posta adresi zorunludur." })
+      .trim()
+      .email("Geçerli bir e-posta girin.")
+      .toLowerCase(),
+    plan: z.enum(["DEMO", "PROFESSIONAL"]).default("DEMO"),
+    trialDays: z.coerce.number().int().min(1).max(90).optional(),
+    licenseTerm: z.enum(["1m", "3m", "6m", "1y", "custom"]).optional(),
+    endsAt: z.coerce.date().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.plan === "PROFESSIONAL" && (data.licenseTerm ?? "1y") === "custom") {
+      if (!data.endsAt) {
+        ctx.addIssue({ code: "custom", message: "Özel bitiş tarihi zorunludur.", path: ["endsAt"] });
+        return;
+      }
+      if (data.endsAt.getTime() <= Date.now()) {
+        ctx.addIssue({ code: "custom", message: "Bitiş tarihi geçmiş olamaz.", path: ["endsAt"] });
+      }
+    }
+  });
 
 export const adminEmailIntegrationSchema = z.object({
   senderName: z.string().trim().min(1, "Gönderici adı zorunludur.").max(120),

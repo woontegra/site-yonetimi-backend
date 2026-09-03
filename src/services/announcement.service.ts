@@ -516,6 +516,32 @@ export class AnnouncementService {
     return { ok: true };
   }
 
+  async hardDelete(tenantId: string, siteId: string, id: string) {
+    const existing = await prisma.announcement.findFirst({
+      where: { id, tenantId, siteId },
+      select: { id: true },
+    });
+    if (!existing) throw new HttpError(404, "Duyuru bulunamadı.");
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.announcementApartment.deleteMany({
+          where: { tenantId, announcementId: id },
+        });
+        await tx.announcementBuilding.deleteMany({
+          where: { tenantId, announcementId: id },
+        });
+        await tx.announcement.deleteMany({ where: { id, tenantId, siteId } });
+      });
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        throw new HttpError(409, "Duyuru silinemedi. Bağlı kayıtlar temizlenemedi.");
+      }
+      throw new HttpError(500, "Duyuru silinemedi. Lütfen tekrar deneyin.");
+    }
+    return { ok: true };
+  }
+
   /** Hedef kitle önizlemesi — WhatsApp/SMS gönderimi yok. */
   async previewAudience(tenantId: string, siteId: string, input: PreviewAudienceInput) {
     await assertSiteInTenant(tenantId, siteId, { requireActive: true });

@@ -101,6 +101,78 @@ export async function countSiteRelations(
   return rows.filter((item) => item.count > 0);
 }
 
+export async function countSiteRelationsForPurge(tenantId: string, siteId: string) {
+  const apartmentWhere = { tenantId, building: { tenantId, siteId } };
+  const viaBuilding = { tenantId, building: { tenantId, siteId } };
+
+  const [
+    buildings,
+    apartments,
+    relations,
+    debts,
+    payments,
+    expenses,
+    announcements,
+    assets,
+    feedback,
+    dues,
+    visits,
+    messages,
+    batches,
+    maintenances,
+    movements,
+    bankAccounts,
+    matchingRules,
+    employees,
+    feedbackHistory,
+  ] = await Promise.all([
+    prisma.building.count({ where: { tenantId, siteId } }),
+    prisma.apartment.count({ where: apartmentWhere }),
+    prisma.apartmentPersonRelation.count({ where: { tenantId, apartment: apartmentWhere } }),
+    prisma.apartmentDebt.count({ where: viaBuilding }),
+    prisma.payment.count({ where: { tenantId, apartment: apartmentWhere } }),
+    prisma.expense.count({ where: { tenantId, siteId } }),
+    prisma.announcement.count({ where: { tenantId, siteId } }),
+    prisma.asset.count({ where: { tenantId, siteId } }),
+    prisma.feedbackRecord.count({ where: { tenantId, siteId } }),
+    prisma.duesDefinition.count({ where: viaBuilding }),
+    prisma.visit.count({ where: { tenantId, apartment: apartmentWhere } }),
+    prisma.communicationMessage.count({ where: { tenantId, siteId } }),
+    prisma.communicationBatch.count({ where: { tenantId, siteId } }),
+    prisma.assetMaintenance.count({ where: { tenantId, siteId } }),
+    prisma.assetMovement.count({ where: { tenantId, siteId } }),
+    prisma.bankAccount.count({ where: { tenantId, siteId } }),
+    prisma.bankMatchingRule.count({ where: { tenantId, siteId } }),
+    prisma.employeeAssignment.count({ where: { tenantId, siteId } }),
+    prisma.feedbackStatusHistory.count({ where: { tenantId, siteId } }),
+  ]);
+
+  const other =
+    dues +
+    visits +
+    messages +
+    batches +
+    maintenances +
+    movements +
+    bankAccounts +
+    matchingRules +
+    employees +
+    feedbackHistory;
+
+  return {
+    buildings,
+    apartments,
+    assets,
+    announcements,
+    relations,
+    debts,
+    payments,
+    expenses,
+    feedback,
+    other,
+  };
+}
+
 export function formatSiteDeleteBlockedMessage(counts: SiteRelationCount[]): string {
   const lines = counts.map((item) => `${item.count} ${item.label}`);
   return [

@@ -536,6 +536,28 @@ export class AssetService {
     return { id };
   }
 
+  async hardDelete(tenantId: string, siteId: string, id: string) {
+    const existing = await prisma.asset.findFirst({
+      where: { id, tenantId, siteId },
+      select: { id: true },
+    });
+    if (!existing) throw new HttpError(404, "Demirbaş bulunamadı.");
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.assetMovement.deleteMany({ where: { tenantId, siteId, assetId: id } });
+        await tx.assetMaintenance.deleteMany({ where: { tenantId, siteId, assetId: id } });
+        await tx.asset.deleteMany({ where: { id, tenantId, siteId } });
+      });
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        throw new HttpError(409, "Demirbaş silinemedi. Bağlı kayıtlar temizlenemedi.");
+      }
+      throw new HttpError(500, "Demirbaş silinemedi. Lütfen tekrar deneyin.");
+    }
+    return { ok: true };
+  }
+
   async listMaintenances(
     tenantId: string,
     siteId: string,
