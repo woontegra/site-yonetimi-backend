@@ -580,6 +580,7 @@ model Expense {
   building    Building?   @relation(fields: [buildingId], references: [id], onDelete: Restrict)
   expenseType ExpenseType @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
   supplier    Supplier?   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  bankTransaction BankTransaction?
 
   @@index([tenantId, status])
   @@index([tenantId, expenseDate])
@@ -639,6 +640,13 @@ enum BankMatchStatus {
   PROCESSED
 }
 
+/// Giden (DEBIT) hareket sınıflandırması. Gelen hareketlerde null.
+enum BankDebitClass {
+  UNCLASSIFIED
+  EXPENSE
+  EXCLUDED
+}
+
 model BankAccount {
   id                String             @id @default(uuid())
   tenantId          String
@@ -690,9 +698,12 @@ model BankTransaction {
   balanceAfter          Decimal?                 @db.Decimal(12, 2)
   status                BankTransactionStatus    @default(ACTIVE)
   matchStatus           BankMatchStatus          @default(UNMATCHED)
+  /// DEBIT sınıflandırması. CREDIT için null.
+  debitClass            BankDebitClass?
   matchedApartmentId    String?
   matchedPersonId       String?
   paymentId             String?                  @unique
+  expenseId             String?                  @unique
   matchedAt             DateTime?
   processedAt           DateTime?
   ignoredAt             DateTime?
@@ -705,11 +716,13 @@ model BankTransaction {
   matchedApartment Apartment?   @relation("BankTxMatchedApartment", fields: [matchedApartmentId], references: [id], onDelete: SetNull)
   matchedPerson    Person?      @relation("BankTxMatchedPerson", fields: [matchedPersonId], references: [id], onDelete: SetNull)
   payment          Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  expense          Expense?     @relation(fields: [expenseId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, bankAccountId, importFingerprint])
   @@index([tenantId, matchStatus])
   @@index([bankAccountId, transactionDate])
   @@index([tenantId, status])
+  @@index([tenantId, direction, debitClass])
   @@index([externalTransactionId])
   @@map("bank_transactions")
 }

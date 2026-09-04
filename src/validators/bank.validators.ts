@@ -112,10 +112,41 @@ export const listBankTransactionsQuerySchema = z.object({
   bankAccountId: optionalUuid(),
   direction: z.enum(["CREDIT", "DEBIT"]).optional(),
   matchStatus: z.enum(["UNMATCHED", "SUGGESTED", "MATCHED", "PROCESSED"]).optional(),
+  debitClass: z.enum(["UNCLASSIFIED", "EXPENSE", "EXCLUDED"]).optional(),
   status: z.enum(["ACTIVE", "IGNORED"]).optional(),
   dateFrom: optionalDate(),
   dateTo: optionalDate(),
 });
+
+export const classifyBankDebitSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("EXCLUDE"),
+  }),
+  z.object({
+    action: z.literal("RESET"),
+  }),
+  z.object({
+    action: z.literal("CREATE_EXPENSE"),
+    title: z
+      .string({ required_error: "Gider başlığı zorunludur." })
+      .trim()
+      .min(1, "Gider başlığı zorunludur.")
+      .max(200),
+    expenseTypeId: z.string().uuid("Gider türü zorunludur."),
+    expenseDate: z.coerce.date({
+      required_error: "Gider tarihi zorunludur.",
+      invalid_type_error: "Geçerli bir tarih girin.",
+    }),
+    paymentMethod: z
+      .enum(["CASH", "BANK_TRANSFER", "CREDIT_CARD", "OTHER"])
+      .optional()
+      .default("BANK_TRANSFER"),
+    buildingId: optionalUuid(),
+    supplierId: optionalUuid(),
+    referenceNo: optionalText(),
+    description: optionalText(),
+  }),
+]);
 
 export const matchBankTransactionSchema = z.object({
   apartmentId: z.string().uuid("Daire seçimi zorunludur."),
@@ -135,6 +166,41 @@ export const processBankTransactionSchema = z.object({
       }),
     )
     .min(1, "En az bir borç dağılımı gerekli."),
+});
+
+export const processBankTransactionAutoSchema = z.object({
+  personId: optionalUuid(),
+});
+
+export const bankTransactionIdsSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1, "En az bir hareket seçin.").max(100),
+});
+
+export const processBankTransactionBatchSchema = z.object({
+  ids: z.array(z.string().uuid()).min(1, "En az bir hareket seçin.").max(100),
+  /** Riskli eşleşmeleri de işle (varsayılan: hayır). */
+  includeRisky: z.boolean().optional().default(false),
+  /**
+   * PERIOD_CONFLICT grupları:
+   * SKIP — toplu onaya alma (varsayılan)
+   * SEQUENTIAL — işlem tarihine göre sırayla dağıt
+   */
+  resolvePeriodConflicts: z.enum(["SKIP", "SEQUENTIAL"]).optional().default("SKIP"),
+  allocationOverrides: z
+    .array(
+      z.object({
+        transactionId: z.string().uuid(),
+        allocations: z
+          .array(
+            z.object({
+              apartmentDebtId: z.string().uuid(),
+              amount: z.number().positive("Allocation tutarı pozitif olmalıdır."),
+            }),
+          )
+          .min(1),
+      }),
+    )
+    .optional(),
 });
 
 export const createBankMatchingRuleSchema = z.object({
@@ -189,6 +255,9 @@ export type CreateBankTransactionInput = z.infer<typeof createBankTransactionSch
 export type ListBankTransactionsQuery = z.infer<typeof listBankTransactionsQuerySchema>;
 export type MatchBankTransactionInput = z.infer<typeof matchBankTransactionSchema>;
 export type ProcessBankTransactionInput = z.infer<typeof processBankTransactionSchema>;
+export type ProcessBankTransactionAutoInput = z.infer<typeof processBankTransactionAutoSchema>;
+export type ProcessBankTransactionBatchInput = z.infer<typeof processBankTransactionBatchSchema>;
+export type ClassifyBankDebitInput = z.infer<typeof classifyBankDebitSchema>;
 export type CreateBankMatchingRuleInput = z.infer<typeof createBankMatchingRuleSchema>;
 export type UpdateBankMatchingRuleInput = z.infer<typeof updateBankMatchingRuleSchema>;
 export type ListBankMatchingRulesQuery = z.infer<typeof listBankMatchingRulesQuerySchema>;

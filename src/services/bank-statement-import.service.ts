@@ -1,11 +1,16 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma";
 import { computeBankImportFingerprint, suggestMatchPattern } from "../utils/bank-fingerprint";
-import { suggestStatementMatch } from "../utils/bank-statement-match";
+import {
+  loadStatementMatchContext,
+  suggestStatementMatch,
+  suggestStatementMatchFromContext,
+} from "../utils/bank-statement-match";
 import { assertApartmentInSite, assertBankAccountInSite } from "../utils/siteScope";
 import { HttpError } from "../utils/httpError";
 import { toMoneyString } from "../utils/money";
 import { paymentService } from "./payment.service";
+import { buildAutoAllocations } from "../utils/bank-auto-allocate";
 import type {
   BankStatementCommitInput,
   BankStatementPreviewInput,
@@ -29,42 +34,35 @@ function parseDateOnly(value: string): Date {
   return date;
 }
 
-async function buildAutoAllocations(
-  tx: Prisma.TransactionClient,
-  tenantId: string,
-  siteId: string,
-  apartmentId: string,
-  amount: Prisma.Decimal,
-): Promise<Array<{ apartmentDebtId: string; amount: number }> | null> {
-  const debts = await tx.apartmentDebt.findMany({
-    where: {
-      tenantId,
-      apartmentId,
-      status: "OPEN",
-      building: { siteId, deletedAt: null },
-    },
-    orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
-    select: { id: true, remainingAmount: true },
-  });
-
-  let left = new Prisma.Decimal(amount);
-  const allocations: Array<{ apartmentDebtId: string; amount: number }> = [];
-  for (const debt of debts) {
-    if (left.lte(0)) break;
-    const take = Prisma.Decimal.min(debt.remainingAmount, left);
-    if (take.lte(0)) continue;
-    allocations.push({ apartmentDebtId: debt.id, amount: Number(take.toFixed(2)) });
-    left = left.sub(take);
-  }
-
-  if (allocations.length === 0) return null;
-  if (left.gt(0)) return null; // avans yok — tam dağıtılamaz
-  return allocations;
+function logPreviewStage(
+  requestId: string,
+  stage: string,
+  startedAt: number,
+  extra: Record<string, string | number | boolean | null> = {},
+) {
+  const elapsedMs = Date.now() - startedAt;
+  console.info(
+    JSON.stringify({
+      scope: "bank_statement_preview",
+      requestId,
+      stage,
+      elapsedMs,
+      ...extra,
+    }),
+  );
 }
 
 export class BankStatementImportService {
   async preview(tenantId: string, siteId: string, input: BankStatementPreviewInput) {
+    const requestId = `preview_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const startedAt = Date.now();
+    logPreviewStage(requestId, "received", startedAt, {
+      rowCount: input.rows.length,
+      fileType: "json_rows",
+    });
+
     await assertBankAccountInSite(tenantId, siteId, input.bankAccountId);
+    logPreviewStage(requestId, "account_validated", startedAt);
 
     if (input.rows.length === 0) {
       throw new HttpError(400, "Önizlenecek satır yok.");
@@ -93,6 +91,84 @@ export class BankStatementImportService {
       select: { importFingerprint: true, id: true, paymentId: true },
     });
     const existingSet = new Set(existing.map((item) => item.importFingerprint).filter(Boolean));
+    logPreviewStage(requestId, "duplicates_loaded", startedAt, {
+      existingCount: existing.length,
+    });
+
+    // Tek seferlik site bağlamı — satır başına rules/apartments/relations sorgusu YOK.
+    const matchCtx = await loadStatementMatchContext(tenantId, siteId, input.bankAccountId);
+    logPreviewStage(requestId, "match_context_loaded", startedAt, {
+      ruleCount: matchCtx.rules.length,
+      apartmentCount: matchCtx.apartments.length,
+      relationCount: matchCtx.relations.length,
+    });
+
+    type DebtRow = {
+      id: string;
+      apartmentId: string;
+      remainingAmount: Prisma.Decimal;
+      dueDate: Date;
+      duesDefinition: { name: string; periodYear: number; periodMonth: number } | null;
+    };
+
+    const provisionalMatches: Array<{
+      index: number;
+      apartmentId: string | null;
+      match: ReturnType<typeof suggestStatementMatchFromContext>;
+    }> = [];
+
+    for (let index = 0; index < input.rows.length; index += 1) {
+      const row = input.rows[index]!;
+      if (!row.description?.trim() || !row.transactionDate || !(row.amount > 0)) continue;
+      if (existingSet.has(fingerprints[index]!)) continue;
+      if (row.direction !== "CREDIT") continue;
+      const match = suggestStatementMatchFromContext(matchCtx, row.description);
+      provisionalMatches.push({ index, apartmentId: match.apartmentId, match });
+    }
+
+    const apartmentIdsForDebts = [
+      ...new Set(
+        provisionalMatches
+          .filter(
+            (item) =>
+              item.match.matchStatus === "SUGGESTED" &&
+              item.apartmentId &&
+              (item.match.confidence === "HIGH" || item.match.confidence === "MEDIUM"),
+          )
+          .map((item) => item.apartmentId!),
+      ),
+    ];
+
+    const debtsByApartment = new Map<string, DebtRow[]>();
+    if (apartmentIdsForDebts.length > 0) {
+      const debts = await prisma.apartmentDebt.findMany({
+        where: {
+          tenantId,
+          apartmentId: { in: apartmentIdsForDebts },
+          status: "OPEN",
+          building: { siteId, deletedAt: null },
+        },
+        orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
+        select: {
+          id: true,
+          apartmentId: true,
+          remainingAmount: true,
+          dueDate: true,
+          duesDefinition: { select: { name: true, periodYear: true, periodMonth: true } },
+        },
+      });
+      for (const debt of debts) {
+        const list = debtsByApartment.get(debt.apartmentId) ?? [];
+        list.push(debt);
+        debtsByApartment.set(debt.apartmentId, list);
+      }
+    }
+    logPreviewStage(requestId, "debts_loaded", startedAt, {
+      matchedApartmentCount: apartmentIdsForDebts.length,
+      debtCount: [...debtsByApartment.values()].reduce((sum, list) => sum + list.length, 0),
+    });
+
+    const matchByIndex = new Map(provisionalMatches.map((item) => [item.index, item.match]));
 
     const rows = [];
     let creditCount = 0;
@@ -151,33 +227,20 @@ export class BankStatementImportService {
         continue;
       }
 
-      const match = await suggestStatementMatch(
-        tenantId,
-        siteId,
-        input.bankAccountId,
-        row.description,
-      );
+      const match =
+        matchByIndex.get(index) ??
+        suggestStatementMatchFromContext(matchCtx, row.description);
 
-      if (match.matchStatus === "SUGGESTED" && match.confidence !== "LOW") {
+      // Otomatik: tek gerçek apartmentId + HIGH/MEDIUM güven (metinsel aday / NONE sayılmaz).
+      if (
+        match.matchStatus === "SUGGESTED" &&
+        match.apartmentId &&
+        (match.confidence === "HIGH" || match.confidence === "MEDIUM")
+      ) {
         autoMatchedCount += 1;
         importableCreditTotal = importableCreditTotal.add(new Prisma.Decimal(row.amount));
 
-        const debts = await prisma.apartmentDebt.findMany({
-          where: {
-            tenantId,
-            apartmentId: match.apartmentId!,
-            status: "OPEN",
-            building: { siteId, deletedAt: null },
-          },
-          orderBy: [{ dueDate: "asc" }, { createdAt: "asc" }],
-          select: {
-            id: true,
-            remainingAmount: true,
-            dueDate: true,
-            duesDefinition: { select: { name: true, periodYear: true, periodMonth: true } },
-          },
-        });
-
+        const debts = debtsByApartment.get(match.apartmentId) ?? [];
         let left = new Prisma.Decimal(row.amount);
         const allocationPreview: Array<{
           apartmentDebtId: string;
@@ -235,6 +298,13 @@ export class BankStatementImportService {
         });
       }
     }
+
+    logPreviewStage(requestId, "response_ready", startedAt, {
+      rowCount: rows.length,
+      creditCount,
+      debitCount,
+      autoMatchedCount,
+    });
 
     return {
       summary: {
@@ -306,7 +376,12 @@ export class BankStatementImportService {
       let matchStatus: "UNMATCHED" | "SUGGESTED" | "MATCHED" = "UNMATCHED";
       let buildingId: string | null = null;
 
-      if (matchedApartmentId) {
+      // Giden hareketler aidat/daire eşleşmesine girmez.
+      if (row.direction === "DEBIT") {
+        matchedApartmentId = null;
+        matchedPersonId = null;
+        matchStatus = "UNMATCHED";
+      } else if (matchedApartmentId) {
         const apartment = await assertApartmentInSite(tenantId, siteId, matchedApartmentId);
         buildingId = apartment.buildingId;
         matchStatus = "MATCHED";
@@ -347,8 +422,13 @@ export class BankStatementImportService {
         matchedPersonId,
         matchStatus,
         buildingId,
-        processPayment: row.processPayment === true,
-        createRule: Boolean(row.createRule && row.containsText?.trim() && matchedApartmentId),
+        processPayment: row.direction === "CREDIT" && row.processPayment === true,
+        createRule: Boolean(
+          row.direction === "CREDIT" &&
+            row.createRule &&
+            row.containsText?.trim() &&
+            matchedApartmentId,
+        ),
         containsText: row.containsText?.trim() || null,
         ruleName: row.ruleName?.trim() || null,
       });
@@ -409,6 +489,7 @@ export class BankStatementImportService {
                 row.balanceAfter != null ? new Prisma.Decimal(row.balanceAfter) : null,
               status: "ACTIVE",
               matchStatus: row.matchStatus,
+              debitClass: row.direction === "DEBIT" ? "UNCLASSIFIED" : null,
               matchedApartmentId: row.matchedApartmentId,
               matchedPersonId: row.matchedPersonId,
               matchedAt: row.matchedApartmentId ? new Date() : null,
@@ -580,10 +661,16 @@ export class BankStatementImportService {
     const now = new Date();
     const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
-    const [accounts, pendingMatch, unmatched, processedThisMonth] = await Promise.all([
+    const [accounts, pendingMatch, unmatched, unclassifiedDebit, processedThisMonth, expensesThisMonth] =
+      await Promise.all([
       prisma.bankAccount.count({ where: { ...accountWhere, isActive: true } }),
       prisma.bankTransaction.count({
-        where: { ...txWhere, matchStatus: { in: ["SUGGESTED", "MATCHED"] }, paymentId: null },
+        where: {
+          ...txWhere,
+          direction: "CREDIT",
+          matchStatus: { in: ["SUGGESTED", "MATCHED"] },
+          paymentId: null,
+        },
       }),
       prisma.bankTransaction.count({
         where: { ...txWhere, matchStatus: "UNMATCHED", direction: "CREDIT" },
@@ -591,7 +678,25 @@ export class BankStatementImportService {
       prisma.bankTransaction.count({
         where: {
           ...txWhere,
+          direction: "DEBIT",
+          OR: [{ debitClass: "UNCLASSIFIED" }, { debitClass: null }],
+          expenseId: null,
+        },
+      }),
+      prisma.bankTransaction.count({
+        where: {
+          ...txWhere,
+          direction: "CREDIT",
           matchStatus: "PROCESSED",
+          processedAt: { gte: monthStart },
+        },
+      }),
+      prisma.bankTransaction.count({
+        where: {
+          ...txWhere,
+          direction: "DEBIT",
+          debitClass: "EXPENSE",
+          expenseId: { not: null },
           processedAt: { gte: monthStart },
         },
       }),
@@ -601,7 +706,10 @@ export class BankStatementImportService {
       accounts,
       pendingMatch,
       unmatched,
+      unmatchedCredit: unmatched,
+      unclassifiedDebit,
       processedThisMonth,
+      expensesThisMonth,
     };
   }
 }

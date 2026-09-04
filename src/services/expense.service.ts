@@ -276,13 +276,23 @@ export class ExpenseService {
       throw new HttpError(400, "Gider zaten iptal edilmiş.");
     }
 
-    const row = await prisma.expense.update({
-      where: { id },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
-      },
-      select: expenseSelect,
+    const row = await prisma.$transaction(async (tx) => {
+      await tx.bankTransaction.updateMany({
+        where: { expenseId: id, tenantId },
+        data: {
+          expenseId: null,
+          debitClass: "UNCLASSIFIED",
+          processedAt: null,
+        },
+      });
+      return tx.expense.update({
+        where: { id },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+        },
+        select: expenseSelect,
+      });
     });
 
     return mapExpense(row);

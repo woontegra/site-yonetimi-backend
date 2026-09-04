@@ -1,6 +1,4 @@
-import { Prisma } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
-import { env } from "../config/env";
 import { HttpError } from "../utils/httpError";
 
 function isDatabaseUnavailable(err: unknown): boolean {
@@ -31,18 +29,11 @@ export function errorHandler(
 
   console.error(err);
 
-  if (env.nodeEnv !== "production") {
-    const message =
-      err instanceof Prisma.PrismaClientKnownRequestError
-        ? `Sunucu hatası (Prisma ${err.code}): ${err.message}`
-        : err instanceof Error
-          ? `Sunucu hatası: ${err.message}`
-          : "Sunucu hatası oluştu.";
-    res.status(500).json({ message });
-    return;
-  }
-
-  res.status(500).json({ message: "Sunucu hatası oluştu." });
+  // Asla Prisma / stack / dosya yolu istemciye sızmasın.
+  res.status(500).json({
+    message: "İşlem sırasında beklenmeyen bir hata oluştu. Lütfen yeniden deneyin.",
+    code: "INTERNAL_ERROR",
+  });
 }
 
 export function notFoundHandler(_req: Request, res: Response): void {

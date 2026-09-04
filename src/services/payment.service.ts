@@ -320,7 +320,11 @@ export class PaymentService {
       const debt = debtMap.get(allocation.apartmentDebtId)!;
       const allocAmount = new Prisma.Decimal(allocation.amount);
       if (allocAmount.gt(debt.remainingAmount)) {
-        throw new HttpError(400, "Ödeme tutarı kalan borç tutarını aşamaz.");
+        throw new HttpError(
+          400,
+          "Dairenin ilgili dönem borcuna birden fazla ödeme dağıtılmaya çalışılıyor. Dağıtımı yeniden kontrol edin.",
+          "DEBT_ALLOCATION_OVERFLOW",
+        );
       }
     }
 

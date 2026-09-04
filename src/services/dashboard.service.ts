@@ -1,5 +1,9 @@
 import { prisma } from "../lib/prisma";
 import { toMoneyString, todayUtc } from "../utils/money";
+import {
+  extractPayerNameHint,
+  loadApartmentResidentSummaries,
+} from "../utils/apartment-residents";
 import { announcementService } from "./announcement.service";
 import { apartmentDebtService } from "./debt.service";
 import { assetService } from "./asset.service";
@@ -14,6 +18,33 @@ function moneySum(...values: Array<string | number>): string {
     sum += Number(value);
   }
   return toMoneyString(sum);
+}
+
+function foldName(value: string): string {
+  return value
+    .toLocaleLowerCase("tr-TR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c");
+}
+
+function payerDiffersFromResidents(
+  payerName: string | null,
+  owners: Array<{ fullName: string }>,
+  tenants: Array<{ fullName: string }>,
+): string | null {
+  if (!payerName?.trim()) return null;
+  const folded = foldName(payerName);
+  const known = [...owners, ...tenants].map((p) => foldName(p.fullName));
+  if (known.some((n) => n === folded || folded.includes(n) || n.includes(folded))) {
+    return null;
+  }
+  return payerName.trim();
 }
 
 export class DashboardService {
@@ -101,13 +132,46 @@ export class DashboardService {
           title: true,
           dueDate: true,
           remainingAmount: true,
-          apartment: { select: { number: true } },
+          apartmentId: true,
+          apartment: { select: { id: true, number: true } },
           building: { select: { name: true } },
         },
         orderBy: { dueDate: "asc" },
         take: 5,
       }),
     ]);
+
+    const paymentApartmentIds = recentPayments.items.map((item) => item.apartment.id);
+    const debtApartmentIds = upcomingDebts.map((item) => item.apartmentId);
+    const residentMap = await loadApartmentResidentSummaries(tenantId, siteId, [
+      ...paymentApartmentIds,
+      ...debtApartmentIds,
+    ]);
+
+    const paymentIds = recentPayments.items.map((item) => item.id);
+    const bankLinks =
+      paymentIds.length === 0
+        ? []
+        : await prisma.bankTransaction.findMany({
+            where: {
+              tenantId,
+              paymentId: { in: paymentIds },
+              bankAccount: { siteId, deletedAt: null },
+            },
+            select: {
+              paymentId: true,
+              senderName: true,
+              description: true,
+            },
+          });
+    const payerByPaymentId = new Map<string, string | null>();
+    for (const row of bankLinks) {
+      if (!row.paymentId) continue;
+      payerByPaymentId.set(
+        row.paymentId,
+        extractPayerNameHint(row.senderName, row.description),
+      );
+    }
 
     const periodAccrual = moneySum(
       periodOpen.summary.totalOriginalAmount,
@@ -126,15 +190,28 @@ export class DashboardService {
       accruedNum > 0 ? Math.min(100, Math.round((collectedNum / accruedNum) * 100)) : null;
 
     const recentActivity = [
-      ...recentPayments.items.map((item) => ({
-        id: item.id,
-        type: "payment" as const,
-        title: item.title,
-        subtitle: `${item.building.name} · Daire ${item.apartment.number}`,
-        amount: item.amount,
-        occurredAt: item.paymentDate,
-        href: `/app/muhasebe/tahsilatlar/${item.id}`,
-      })),
+      ...recentPayments.items.map((item) => {
+        const residents = residentMap.get(item.apartment.id);
+        const activeOwners = residents?.activeOwners ?? [];
+        const activeTenants = residents?.activeTenants ?? [];
+        const rawPayer = payerByPaymentId.get(item.id) ?? null;
+        const payerName = payerDiffersFromResidents(rawPayer, activeOwners, activeTenants);
+        return {
+          id: item.id,
+          type: "payment" as const,
+          title: item.title,
+          subtitle: `${item.building.name} · Daire ${item.apartment.number}`,
+          amount: item.amount,
+          occurredAt: item.paymentDate,
+          href: `/app/muhasebe/tahsilatlar/${item.id}`,
+          apartmentId: item.apartment.id,
+          apartmentNumber: item.apartment.number,
+          buildingName: item.building.name,
+          activeOwners,
+          activeTenants,
+          payerName,
+        };
+      }),
       ...recentExpenses.items.map((item) => ({
         id: item.id,
         type: "expense" as const,
@@ -143,6 +220,12 @@ export class DashboardService {
         amount: item.amount,
         occurredAt: item.expenseDate,
         href: `/app/muhasebe/giderler/${item.id}`,
+        apartmentId: null as string | null,
+        apartmentNumber: null as string | null,
+        buildingName: null as string | null,
+        activeOwners: [] as Array<{ id: string; fullName: string }>,
+        activeTenants: [] as Array<{ id: string; fullName: string }>,
+        payerName: null as string | null,
       })),
     ]
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
@@ -182,15 +265,23 @@ export class DashboardService {
       },
       recentActivity,
       upcoming: [
-        ...upcomingDebts.map((item) => ({
-          id: item.id,
-          type: "debt" as const,
-          title: item.title,
-          subtitle: `${item.building.name} · Daire ${item.apartment.number}`,
-          date: item.dueDate.toISOString(),
-          amount: toMoneyString(item.remainingAmount),
-          href: `/app/muhasebe/borclar/${item.id}`,
-        })),
+        ...upcomingDebts.map((item) => {
+          const residents = residentMap.get(item.apartmentId);
+          return {
+            id: item.id,
+            type: "debt" as const,
+            title: item.title,
+            subtitle: `${item.building.name} · Daire ${item.apartment.number}`,
+            date: item.dueDate.toISOString(),
+            amount: toMoneyString(item.remainingAmount),
+            href: `/app/muhasebe/borclar/${item.id}`,
+            apartmentId: item.apartmentId,
+            apartmentNumber: item.apartment.number,
+            buildingName: item.building.name,
+            activeOwners: residents?.activeOwners ?? [],
+            activeTenants: residents?.activeTenants ?? [],
+          };
+        }),
         ...upcomingAssets.items.map((item) => ({
           id: item.id,
           type: "maintenance" as const,
@@ -199,6 +290,11 @@ export class DashboardService {
           date: item.nextMaintenanceDate,
           amount: null as string | null,
           href: `/app/demirbaslar/${item.id}`,
+          apartmentId: null as string | null,
+          apartmentNumber: null as string | null,
+          buildingName: item.building?.name ?? null,
+          activeOwners: [] as Array<{ id: string; fullName: string }>,
+          activeTenants: [] as Array<{ id: string; fullName: string }>,
         })),
       ]
         .filter((item) => item.date)

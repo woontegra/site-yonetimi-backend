@@ -5,6 +5,7 @@ import { bankMatchingRuleService } from "../services/bank-matching-rule.service"
 import { bankTransactionService } from "../services/bank-transaction.service";
 import { HttpError } from "../utils/httpError";
 import {
+  classifyBankDebitSchema,
   createBankAccountSchema,
   createBankMatchingRuleSchema,
   createBankTransactionSchema,
@@ -12,7 +13,10 @@ import {
   listBankMatchingRulesQuerySchema,
   listBankTransactionsQuerySchema,
   matchBankTransactionSchema,
+  processBankTransactionAutoSchema,
+  processBankTransactionBatchSchema,
   processBankTransactionSchema,
+  bankTransactionIdsSchema,
   updateBankAccountSchema,
   updateBankMatchingRuleSchema,
 } from "../validators/bank.validators";
@@ -155,6 +159,94 @@ export async function processBankTransaction(req: Request, res: Response, next: 
     const parsed = processBankTransactionSchema.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, firstZodMessage(parsed.error));
     const bankTransaction = await bankTransactionService.process(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      String(req.params.id),
+      parsed.data,
+    );
+    res.status(200).json({ bankTransaction });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function processBankTransactionAuto(req: Request, res: Response, next: NextFunction) {
+  try {
+    assertSiteActive(req);
+    const parsed = processBankTransactionAutoSchema.safeParse(req.body ?? {});
+    if (!parsed.success) throw new HttpError(400, firstZodMessage(parsed.error));
+    const bankTransaction = await bankTransactionService.processAuto(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      String(req.params.id),
+      parsed.data.personId,
+    );
+    res.status(200).json({ bankTransaction });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function confirmBankTransactionMatch(req: Request, res: Response, next: NextFunction) {
+  try {
+    assertSiteActive(req);
+    const bankTransaction = await bankTransactionService.confirmSuggestion(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      String(req.params.id),
+    );
+    res.status(200).json({ bankTransaction });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function previewBankTransactionProcessBatch(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const parsed = bankTransactionIdsSchema.safeParse(req.body);
+    if (!parsed.success) throw new HttpError(400, firstZodMessage(parsed.error));
+    const result = await bankTransactionService.previewProcessBatch(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      parsed.data.ids,
+    );
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function processBankTransactionBatch(req: Request, res: Response, next: NextFunction) {
+  try {
+    assertSiteActive(req);
+    const parsed = processBankTransactionBatchSchema.safeParse(req.body);
+    if (!parsed.success) throw new HttpError(400, firstZodMessage(parsed.error));
+    const result = await bankTransactionService.processBatch(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      parsed.data.ids,
+      {
+        includeRisky: parsed.data.includeRisky,
+        resolvePeriodConflicts: parsed.data.resolvePeriodConflicts,
+        allocationOverrides: parsed.data.allocationOverrides,
+      },
+    );
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function classifyBankDebit(req: Request, res: Response, next: NextFunction) {
+  try {
+    assertSiteActive(req);
+    const parsed = classifyBankDebitSchema.safeParse(req.body);
+    if (!parsed.success) throw new HttpError(400, firstZodMessage(parsed.error));
+    const bankTransaction = await bankTransactionService.classifyDebit(
       tenantIdFrom(req),
       siteIdFrom(req),
       String(req.params.id),
