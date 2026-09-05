@@ -212,7 +212,29 @@ export async function evaluateLicenseAccess(userId: string, tenantId: string | n
   return { user, subscription, decision };
 }
 
+const TENANT_HISTORY_LABELS: Record<string, string> = {
+  DEMO_STARTED: "Demo başlatıldı",
+  DEMO_EXTENDED: "Demo uzatıldı",
+  ANNUAL_STARTED: "Yıllık lisans başlatıldı",
+  ANNUAL_CONVERTED: "Yıllık lisansa dönüştürüldü",
+  ANNUAL_RENEWED: "Yıllık lisans yenilendi",
+  EXTENDED: "Süre uzatıldı",
+  PLAN_CHANGED: "Plan değiştirildi",
+  SUSPENDED: "Askıya alındı",
+  REACTIVATED: "Yeniden etkinleştirildi",
+  CANCELLED: "İptal edildi",
+  ENDS_AT_SET: "Bitiş tarihi güncellendi",
+};
+
 export async function getMyLicenseOverview(userId: string, tenantId: string) {
+  const membership = await prisma.membership.findUnique({
+    where: { userId_tenantId: { userId, tenantId } },
+    select: { id: true, status: true },
+  });
+  if (!membership || membership.status === "DISABLED") {
+    throw new HttpError(403, "Bu organizasyonun lisans bilgilerini görüntüleme yetkiniz yok.", "FORBIDDEN_TENANT");
+  }
+
   const { user, subscription, decision } = await evaluateLicenseAccess(userId, tenantId);
   if (!user || !user.isActive) {
     throw new HttpError(401, "Oturum geçersiz.");
@@ -220,8 +242,20 @@ export async function getMyLicenseOverview(userId: string, tenantId: string) {
 
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
-    select: { id: true, name: true },
+    select: {
+      id: true,
+      name: true,
+      _count: {
+        select: {
+          sites: { where: { deletedAt: null } },
+          memberships: { where: { status: { in: ["ACTIVE", "INVITED"] } } },
+        },
+      },
+    },
   });
+  if (!tenant) {
+    throw new HttpError(400, "Organizasyon bağlamı gerekli.", "ORGANIZATION_CONTEXT_REQUIRED");
+  }
 
   const view = subscription ? toLicenseView(subscription) : null;
 
@@ -236,14 +270,52 @@ export async function getMyLicenseOverview(userId: string, tenantId: string) {
         : ("SUBSCRIPTION_BOUND" as const),
       licenseStatus: user.isPlatformAdmin ? ("EXEMPT" as const) : ("BOUND" as const),
     },
-    organization: tenant,
+    organization: { id: tenant.id, name: tenant.name },
+    usage: {
+      siteCount: tenant._count.sites,
+      userCount: tenant._count.memberships,
+    },
     licenseScope:
       "Bu lisans organizasyonunuzdaki bütün kullanıcı ve siteleri kapsar." as const,
     support: {
       email: process.env.LICENSE_SUPPORT_EMAIL?.trim() || process.env.SUPPORT_EMAIL?.trim() || null,
       renewalUrl: process.env.LICENSE_RENEWAL_URL?.trim() || null,
     },
+    state: view ? ("HAS_LICENSE" as const) : ("NO_LICENSE" as const),
+    license: view,
+    /** Geriye uyumluluk — FE `subscription` alanını da okuyabilir. */
     subscription: view,
+  };
+}
+
+/** Tenant UI için sade geçmiş — admin e-postası / ham JSON yok. */
+export async function listMyLicenseHistory(tenantId: string, limit = 20) {
+  const items = await prisma.subscriptionHistory.findMany({
+    where: { tenantId },
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 50),
+    select: {
+      id: true,
+      action: true,
+      createdAt: true,
+      previousValues: true,
+      newValues: true,
+    },
+  });
+
+  return {
+    items: items.map((item) => {
+      const prev = (item.previousValues ?? {}) as Record<string, unknown>;
+      const next = (item.newValues ?? {}) as Record<string, unknown>;
+      return {
+        id: item.id,
+        action: item.action,
+        label: TENANT_HISTORY_LABELS[item.action] ?? "Lisans güncellendi",
+        createdAt: item.createdAt.toISOString(),
+        previousEndsAt: typeof prev.endsAt === "string" ? prev.endsAt : null,
+        newEndsAt: typeof next.endsAt === "string" ? next.endsAt : null,
+      };
+    }),
   };
 }
 

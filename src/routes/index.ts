@@ -47,6 +47,7 @@ apiRouter.use("/sites", siteRouter);
 apiRouter.use("/site-setup", siteSetupRouter);
 apiRouter.use("/buildings", buildingRouter);
 apiRouter.use("/apartments", apartmentRouter);
+/** Path’siz mount: route middleware’leri yalnız kendi path’lerinde çalışmalı (requireSite sızmasın). */
 apiRouter.use(apartmentDuesExemptionRouter);
 apiRouter.use("/persons", personRouter);
 apiRouter.use("/apartment-person-relations", relationRouter);
