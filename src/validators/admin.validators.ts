@@ -216,6 +216,7 @@ export const adminCreateTenantSchema = z
       .toLowerCase(),
     plan: z.enum(["DEMO", "ANNUAL"]).default("DEMO"),
     trialDays: z.coerce.number().int().min(1).max(90).optional(),
+    annualDays: z.coerce.number().int().min(1).max(3660).optional(),
     endsAt: z.coerce.date().optional(),
     startsAt: z.coerce.date().optional(),
     netPrice: z.coerce.number().min(0).max(1_000_000).optional(),

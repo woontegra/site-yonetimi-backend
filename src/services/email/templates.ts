@@ -132,3 +132,54 @@ export function renderPlatformNewTenantEmail(input: {
     .join("\n");
   return { subject, html, text };
 }
+
+export function renderAnnualLicenseRequestEmail(input: {
+  requestId: string;
+  tenantName: string;
+  requesterName: string;
+  requesterEmail: string;
+  currentPlan: string | null;
+  currentEndsAtLabel: string | null;
+  netPrice: number;
+  vatAmount: number;
+  grossPrice: number;
+  note: string | null;
+  adminUrl: string;
+}): RenderedEmail {
+  const subject = `Yıllık lisans talebi — ${input.tenantName}`;
+  const plan =
+    input.currentPlan === "DEMO" ? "Demo" : input.currentPlan === "ANNUAL" ? "Yıllık" : input.currentPlan;
+  const html = layout(
+    subject,
+    `<p style="margin:0 0 12px;font-size:15px;">Yeni bir yıllık lisans talebi alındı.</p>
+     <p style="margin:0 0 8px;font-size:14px;"><strong>Talep no:</strong> ${escapeHtml(input.requestId)}</p>
+     <p style="margin:0 0 8px;font-size:14px;"><strong>Organizasyon:</strong> ${escapeHtml(input.tenantName)}</p>
+     <p style="margin:0 0 8px;font-size:14px;"><strong>Yetkili:</strong> ${escapeHtml(input.requesterName)}</p>
+     <p style="margin:0 0 8px;font-size:14px;"><strong>E-posta:</strong> ${escapeHtml(input.requesterEmail)}</p>
+     ${plan ? `<p style="margin:0 0 8px;font-size:14px;"><strong>Mevcut lisans:</strong> ${escapeHtml(plan)}</p>` : ""}
+     ${input.currentEndsAtLabel ? `<p style="margin:0 0 8px;font-size:14px;"><strong>Bitiş:</strong> ${escapeHtml(input.currentEndsAtLabel)}</p>` : ""}
+     <p style="margin:0 0 8px;font-size:14px;"><strong>Net:</strong> ${input.netPrice.toLocaleString("tr-TR")} TL</p>
+     <p style="margin:0 0 8px;font-size:14px;"><strong>KDV:</strong> ${input.vatAmount.toLocaleString("tr-TR")} TL</p>
+     <p style="margin:0 0 12px;font-size:14px;"><strong>Toplam:</strong> ${input.grossPrice.toLocaleString("tr-TR")} TL</p>
+     ${input.note ? `<p style="margin:0 0 12px;font-size:14px;"><strong>Not:</strong> ${escapeHtml(input.note)}</p>` : ""}
+     <p style="margin:0;"><a href="${escapeHtml(input.adminUrl)}" style="color:#0f5f63;">Admin panelinde talebi aç</a></p>`,
+  );
+  const text = [
+    subject,
+    "",
+    `Talep no: ${input.requestId}`,
+    `Organizasyon: ${input.tenantName}`,
+    `Yetkili: ${input.requesterName}`,
+    `E-posta: ${input.requesterEmail}`,
+    plan ? `Mevcut lisans: ${plan}` : "",
+    input.currentEndsAtLabel ? `Bitiş: ${input.currentEndsAtLabel}` : "",
+    `Net: ${input.netPrice} TL`,
+    `KDV: ${input.vatAmount} TL`,
+    `Toplam: ${input.grossPrice} TL`,
+    input.note ? `Not: ${input.note}` : "",
+    `Detay: ${input.adminUrl}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { subject, html, text };
+}

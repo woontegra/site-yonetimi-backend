@@ -20,6 +20,7 @@ model Tenant {
   tenantAuditLogs              TenantAuditLog[]
   subscription                 Subscription?
   subscriptionHistory          SubscriptionHistory[]
+  annualLicenseRequests        AnnualLicenseRequest[]
   adminNotes                   AdminNote[]
   adminAuditLogs               AdminAuditLog[]
   buildings                    Building[]
@@ -94,6 +95,8 @@ model User {
   subscriptionsCreated        Subscription[]             @relation("SubscriptionCreatedBy")
   subscriptionsModified       Subscription[]             @relation("SubscriptionModifiedBy")
   subscriptionHistory         SubscriptionHistory[]
+  annualLicenseRequests       AnnualLicenseRequest[]     @relation("AnnualLicenseRequestedBy")
+  annualLicenseRequestsProcessed AnnualLicenseRequest[]  @relation("AnnualLicenseProcessedBy")
   adminNotesAsSubject         AdminNote[]                @relation("AdminNoteSubjectUser")
 
   @@map("users")
@@ -1565,6 +1568,49 @@ model SubscriptionHistory {
   @@map("subscription_history")
 }
 
+enum AnnualLicenseRequestStatus {
+  PENDING
+  CONTACTED
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Tenant yıllık lisans satın alma talebi. Ödeme/otomatik aktivasyon yok.
+model AnnualLicenseRequest {
+  id                      String                      @id @default(uuid())
+  tenantId                String
+  requestedByUserId       String
+  currentSubscriptionId   String?
+  status                  AnnualLicenseRequestStatus  @default(PENDING)
+  netPriceSnapshot        Decimal                     @db.Decimal(12, 2)
+  vatRateSnapshot         Decimal                     @db.Decimal(5, 2)
+  vatAmountSnapshot       Decimal                     @db.Decimal(12, 2)
+  grossPriceSnapshot      Decimal                     @db.Decimal(12, 2)
+  currency                String                      @default("TRY")
+  note                    String?
+  organizationNameSnapshot String
+  requesterNameSnapshot   String
+  requesterEmailSnapshot  String
+  requesterPhoneSnapshot  String?
+  currentPlanSnapshot     String?
+  currentEndsAtSnapshot   DateTime?
+  createdAt               DateTime                    @default(now())
+  updatedAt               DateTime                    @updatedAt
+  processedByAdminId      String?
+  processedAt             DateTime?
+  adminNote               String?
+
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  requestedByUser User   @relation("AnnualLicenseRequestedBy", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  processedByAdmin User? @relation("AnnualLicenseProcessedBy", fields: [processedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status, createdAt])
+  @@index([status, createdAt])
+  @@index([requestedByUserId, createdAt])
+  @@map("annual_license_requests")
+}
+
 /// Platform admin işlem kaydı. Silinmez.
 model AdminAuditLog {
   id          String   @id @default(uuid())
@@ -1621,6 +1667,7 @@ enum PlatformEmailStatus {
 enum EmailDeliveryType {
   TENANT_WELCOME_ACTIVATION
   PLATFORM_NEW_TENANT_NOTIFICATION
+  ANNUAL_LICENSE_REQUEST_NOTIFICATION
   SMTP_TEST
 }
 

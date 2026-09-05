@@ -56,6 +56,14 @@ import {
   updateAdminUserAccess,
 } from "../controllers/admin.controller";
 import {
+  approveAdminAnnualLicenseRequestHandler,
+  cancelAdminAnnualLicenseRequestHandler,
+  contactAdminAnnualLicenseRequestHandler,
+  getAdminAnnualLicenseRequestHandler,
+  listAdminAnnualLicenseRequestsHandler,
+  rejectAdminAnnualLicenseRequestHandler,
+} from "../controllers/annual-license-request.controller";
+import {
   getAdminEmailIntegration,
   listAdminEmailDeliveries,
   resendAdminTenantNotification,
@@ -130,6 +138,13 @@ adminRouter.post("/subscriptions/:tenantId/plan", changeAdminSubscriptionPlan);
 adminRouter.post("/subscriptions/:tenantId/suspend", suspendAdminSubscription);
 adminRouter.post("/subscriptions/:tenantId/reactivate", reactivateAdminSubscription);
 adminRouter.post("/subscriptions/:tenantId/ends-at", setAdminSubscriptionEndsAt);
+
+adminRouter.get("/license-requests", listAdminAnnualLicenseRequestsHandler);
+adminRouter.get("/license-requests/:id", getAdminAnnualLicenseRequestHandler);
+adminRouter.post("/license-requests/:id/contacted", contactAdminAnnualLicenseRequestHandler);
+adminRouter.post("/license-requests/:id/approve", approveAdminAnnualLicenseRequestHandler);
+adminRouter.post("/license-requests/:id/reject", rejectAdminAnnualLicenseRequestHandler);
+adminRouter.post("/license-requests/:id/cancel", cancelAdminAnnualLicenseRequestHandler);
 
 adminRouter.get("/integrations", listAdminIntegrations);
 adminRouter.get("/integrations/:id", getAdminIntegration);

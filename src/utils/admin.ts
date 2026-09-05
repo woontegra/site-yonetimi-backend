@@ -57,8 +57,26 @@ export function redactSecrets(value: string | null | undefined): string | null {
   return value
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
     .replace(/EAA[A-Za-z0-9]+/g, "[redacted]")
-    .replace(/(?:access[_-]?token|api[_-]?key|secret|password)\s*[:=]\s*\S+/gi, "[redacted]")
+    .replace(/(?:access[_-]?token|api[_-]?key|secret|password|resetToken|code)\s*[:=]\s*\S+/gi, "[redacted]")
+    .replace(/([?#&](?:token|resetToken|code|invite)=)[^&\s#]+/gi, "$1[redacted]")
     .replace(/[A-Fa-f0-9]{40,}/g, "[redacted]");
+}
+
+/** URL / query / body özetlerini log için maskele. */
+export function redactSensitiveUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw, "http://local.invalid");
+    for (const key of ["token", "code", "resetToken", "invite", "password"]) {
+      if (url.searchParams.has(key)) url.searchParams.set(key, "[redacted]");
+    }
+    if (url.hash) {
+      url.hash = url.hash.replace(/(token|code|resetToken)=([^&]+)/gi, "$1=[redacted]");
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return redactSecrets(raw);
+  }
 }
 
 export function daysUntil(date: Date, from = new Date()): number {

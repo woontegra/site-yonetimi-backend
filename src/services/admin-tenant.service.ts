@@ -115,6 +115,7 @@ export class AdminTenantService {
       managerEmail: string;
       plan?: "DEMO" | "ANNUAL";
       trialDays?: number;
+      annualDays?: number;
       endsAt?: Date;
       startsAt?: Date;
       netPrice?: number;
@@ -135,11 +136,12 @@ export class AdminTenantService {
     const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
     const startsAt = input.startsAt ?? new Date();
     const demoDays = input.trialDays ?? LICENSE_DEMO_DAYS;
+    const annualDays = input.annualDays ?? LICENSE_ANNUAL_DAYS;
     const endsAt =
       input.endsAt != null
         ? endOfDayFrom(input.endsAt)
         : plan === "ANNUAL"
-          ? addCalendarDaysEndOfDay(startsAt, LICENSE_ANNUAL_DAYS)
+          ? addCalendarDaysEndOfDay(startsAt, annualDays)
           : addCalendarDaysEndOfDay(startsAt, demoDays);
     const price = priceForPlan(plan, input.netPrice);
 
@@ -156,7 +158,13 @@ export class AdminTenantService {
         },
       });
       await tx.membership.create({
-        data: { tenantId: tenant.id, userId: user.id, role: "SITE_YONETICISI" },
+        data: {
+          tenantId: tenant.id,
+          userId: user.id,
+          role: "SITE_YONETICISI",
+          status: "INVITED",
+          invitedAt: new Date(),
+        },
       });
       await tx.subscription.create({
         data: {
@@ -206,6 +214,7 @@ export class AdminTenantService {
       metadata: {
         plan,
         trialDays: plan === "DEMO" ? demoDays : null,
+        annualDays: plan === "ANNUAL" ? annualDays : null,
         endsAt: endsAt.toISOString(),
         price,
         managerEmailMasked: managerEmail.replace(/^(.{2}).*(@.*)$/, "$1***$2"),
@@ -219,7 +228,12 @@ export class AdminTenantService {
         tenantId: created.tenantId,
         userId: created.userId,
       });
-    } catch {
+    } catch (err) {
+      // Organizasyon kaydı korunur; e-posta hatası ayrı delivery/audit ile izlenir.
+      console.warn(
+        "[tenant.create] Aktivasyon e-postası gönderilemedi:",
+        err instanceof Error ? err.message : "unknown",
+      );
       emails = null;
     }
 

@@ -1,10 +1,21 @@
 import type { NextFunction, Request, Response } from "express";
 import { HttpError } from "../utils/httpError";
+import { redactSecrets } from "../utils/admin";
 
 function isDatabaseUnavailable(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const name = "name" in err ? String(err.name) : "";
   return name === "PrismaClientInitializationError";
+}
+
+function safeErrorForLog(err: unknown): unknown {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: redactSecrets(err.message) ?? err.message,
+    };
+  }
+  return "[non-error]";
 }
 
 export function errorHandler(
@@ -27,9 +38,9 @@ export function errorHandler(
     return;
   }
 
-  console.error(err);
+  console.error(safeErrorForLog(err));
 
-  // Asla Prisma / stack / dosya yolu istemciye sızmasın.
+  // Asla Prisma / stack / dosya yolu / token istemciye sızmasın.
   res.status(500).json({
     message: "İşlem sırasında beklenmeyen bir hata oluştu. Lütfen yeniden deneyin.",
     code: "INTERNAL_ERROR",

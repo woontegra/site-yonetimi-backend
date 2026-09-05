@@ -21,7 +21,7 @@ export function getPublicAppUrl(): string | null {
   return raw;
 }
 
-/** PUBLIC_APP_URL slash ile bitsa bile ├ğift slash ├╝retmez. */
+/** PUBLIC_APP_URL slash ile bitsa bile çift slash üretmez. */
 export function publicAppHref(pathname: string, query?: Record<string, string>): string | null {
   const base = getPublicAppUrl();
   if (!base) return null;
@@ -31,6 +31,18 @@ export function publicAppHref(pathname: string, query?: Record<string, string>):
       url.searchParams.set(key, value);
     }
   }
+  return url.toString();
+}
+
+/**
+ * Aktivasyon linki — token yalnız fragment’te taşınır (HTTP request/referrer’a gitmez).
+ * Örnek: https://app.example/aktivasyon#token=...
+ */
+export function publicActivationHref(rawToken: string): string | null {
+  const base = getPublicAppUrl();
+  if (!base) return null;
+  const url = new URL("/aktivasyon", `${base}/`);
+  url.hash = `token=${encodeURIComponent(rawToken)}`;
   return url.toString();
 }
 

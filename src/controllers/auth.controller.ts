@@ -140,10 +140,28 @@ export function logout(_req: Request, res: Response): void {
   res.status(204).send();
 }
 
+function setActivationSecurityHeaders(res: Response) {
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Referrer-Policy", "no-referrer");
+}
+
+function activationTokenFromRequest(req: Request): string {
+  if (typeof req.body?.token === "string" && req.body.token.trim()) {
+    return req.body.token.trim();
+  }
+  // Geçici uyumluluk — yeni istemciler body kullanır; query log riski nedeniyle tercih edilmez.
+  if (typeof req.query.token === "string" && req.query.token.trim()) {
+    return req.query.token.trim();
+  }
+  return "";
+}
+
 export async function peekActivation(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    setActivationSecurityHeaders(res);
     assertRateLimit(`activation-peek:${clientKey(req)}`, 40, 15 * 60 * 1000);
-    const parsed = activationTokenSchema.safeParse({ token: req.query.token });
+    const parsed = activationTokenSchema.safeParse({ token: activationTokenFromRequest(req) });
     if (!parsed.success) {
       throw new HttpError(
         400,
@@ -169,6 +187,7 @@ export async function peekActivation(req: Request, res: Response, next: NextFunc
 
 export async function activateAccount(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
+    setActivationSecurityHeaders(res);
     assertRateLimit(`activation-post:${clientKey(req)}`, 12, 15 * 60 * 1000);
     const parsed = activateSchema.safeParse(req.body);
     if (!parsed.success) {

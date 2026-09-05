@@ -15,12 +15,13 @@ import {
 } from "../permissions/catalog";
 import { ACTIVATION_TTL_HOURS, issueActivationToken } from "./email/activation-token.service";
 import { recordFailedDelivery, serializeDelivery } from "./email/email-delivery.service";
-import { publicAppHref } from "./email/mail-provider";
+import { publicActivationHref, publicAppHref } from "./email/mail-provider";
 import { EMAIL_ERROR_MESSAGES } from "./email/mail.types";
 import { platformEmailService } from "./email/platform-email.service";
 import { renderTenantWelcomeEmail } from "./email/templates";
 import { writeTenantAudit } from "./tenant-audit.service";
 import { HttpError } from "../utils/httpError";
+import { assertRateLimit } from "../utils/rate-limit";
 
 const OWNER_ROLES: UserRole[] = ["ORGANIZASYON_SAHIBI", "SITE_YONETICISI"];
 
@@ -46,6 +47,7 @@ async function sendInviteMail(input: {
   tenantId: string;
   tenantName: string;
 }) {
+  assertRateLimit(`tenant-invite:${input.userId}`, 5, 15 * 60 * 1000);
   const originOk = Boolean(publicAppHref("/"));
   if (!originOk) {
     const failed = await recordFailedDelivery({
@@ -61,7 +63,7 @@ async function sendInviteMail(input: {
     return serializeDelivery(failed);
   }
   const issued = await issueActivationToken(input.userId);
-  const activationUrl = publicAppHref("/aktivasyon", { token: issued.raw });
+  const activationUrl = publicActivationHref(issued.raw);
   if (!activationUrl) {
     const failed = await recordFailedDelivery({
       type: "TENANT_WELCOME_ACTIVATION",

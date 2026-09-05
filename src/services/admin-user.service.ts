@@ -205,9 +205,10 @@ export class AdminUserService {
     }
 
     let interventionStatus: "normal" | "passive" | "activation_pending" | "org_blocked" = "normal";
-    if (!user.isActive) interventionStatus = "passive";
-    else if (primary?.status === "INVITED" || (pendingInvite && !user.lastLoginAt)) {
+    if (pendingInvite || primary?.status === "INVITED" || (!user.isActive && Boolean(user.activationTokens[0]))) {
       interventionStatus = "activation_pending";
+    } else if (!user.isActive) {
+      interventionStatus = "passive";
     } else if (
       primary &&
       (!primary.tenant.isActive ||

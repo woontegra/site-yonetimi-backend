@@ -280,6 +280,10 @@ export async function getMyLicenseOverview(userId: string, tenantId: string) {
     support: {
       email: process.env.LICENSE_SUPPORT_EMAIL?.trim() || process.env.SUPPORT_EMAIL?.trim() || null,
       renewalUrl: process.env.LICENSE_RENEWAL_URL?.trim() || null,
+      whatsapp:
+        process.env.LICENSE_SUPPORT_WHATSAPP?.trim() ||
+        process.env.SALES_WHATSAPP?.trim() ||
+        null,
     },
     state: view ? ("HAS_LICENSE" as const) : ("NO_LICENSE" as const),
     license: view,

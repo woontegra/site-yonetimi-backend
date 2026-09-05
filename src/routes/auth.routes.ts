@@ -22,4 +22,5 @@ authRouter.get("/me", requireAuth, me);
 authRouter.patch("/me", requireAuth, updateProfile);
 authRouter.post("/change-password", requireAuth, changePassword);
 authRouter.get("/activation", peekActivation);
+authRouter.post("/activation/peek", peekActivation);
 authRouter.post("/activate", activateAccount);

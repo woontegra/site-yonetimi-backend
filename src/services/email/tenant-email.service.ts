@@ -6,7 +6,7 @@ import { HttpError } from "../../utils/httpError";
 import { assertRateLimit } from "../../utils/rate-limit";
 import { ACTIVATION_TTL_HOURS, consumeActivationToken, issueActivationToken } from "./activation-token.service";
 import { recordFailedDelivery, serializeDelivery } from "./email-delivery.service";
-import { publicAppHref } from "./mail-provider";
+import { publicActivationHref, publicAppHref } from "./mail-provider";
 import { EMAIL_ERROR_MESSAGES } from "./mail.types";
 import { platformEmailService } from "./platform-email.service";
 import { renderPlatformNewTenantEmail, renderTenantWelcomeEmail } from "./templates";
@@ -82,7 +82,7 @@ export async function sendTenantWelcomeAndNotify(input: {
       });
     } else {
       const issued = await issueActivationToken(user.id);
-      const activationUrl = publicAppHref("/aktivasyon", { token: issued.raw });
+      const activationUrl = publicActivationHref(issued.raw);
       if (!activationUrl) {
         throw new HttpError(500, EMAIL_ERROR_MESSAGES.PUBLIC_APP_URL_MISSING, "PUBLIC_APP_URL_MISSING");
       }
@@ -106,6 +106,10 @@ export async function sendTenantWelcomeAndNotify(input: {
       });
     }
     if (input.resendWelcomeOnly) {
+      await prisma.membership.updateMany({
+        where: { userId: user.id, tenantId: tenant.id, status: { not: "DISABLED" } },
+        data: { status: "INVITED", invitedAt: new Date() },
+      });
       await writeAdminAudit({
         adminUserId: input.adminUserId,
         action: "email.invite.resend",
@@ -113,6 +117,11 @@ export async function sendTenantWelcomeAndNotify(input: {
         targetId: user.id,
         tenantId: tenant.id,
         metadata: { status: welcome.status, errorCode: welcome.safeErrorCode },
+      });
+    } else if (welcome) {
+      await prisma.membership.updateMany({
+        where: { userId: user.id, tenantId: tenant.id, status: { not: "DISABLED" } },
+        data: { status: "INVITED", invitedAt: new Date() },
       });
     }
   }

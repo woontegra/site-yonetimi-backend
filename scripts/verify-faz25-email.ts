@@ -55,7 +55,7 @@ function runTemplateTests() {
   const welcome = renderTenantWelcomeEmail({
     managerName: '<script>alert(1)</script>',
     tenantName: "Acme & Co",
-    activationUrl: "http://localhost:3001/aktivasyon?token=abc",
+    activationUrl: "http://localhost:3001/aktivasyon#token=abc",
     expiresHours: 48,
     planLabel: "Demo",
     supportEmail: "destek@example.com",
@@ -63,7 +63,8 @@ function runTemplateTests() {
   assert(welcome.subject === "Site Yönetimi hesabınız oluşturuldu", "welcome subject");
   assert(welcome.html.includes("Hesabımı Etkinleştir"), "welcome button");
   assert(welcome.html.includes("aktivasyon sayfasını açın"), "html fallback link metni");
-  assert(welcome.html.includes('href="http://localhost:3001/aktivasyon?token=abc"'), "html href");
+  assert(welcome.html.includes('href="http://localhost:3001/aktivasyon#token=abc"'), "html href fragment");
+  assert(!welcome.html.includes("?token="), "query token yok");
   assert(!welcome.html.includes("tarayıcınıza yapıştırın"), "uzun url düz metin yok");
   const visibleHtml = welcome.html.replace(/<a [^>]*>/gi, "").replace(/<[^>]+>/g, " ");
   assert(!visibleHtml.includes("token=abc"), "token görünür metinde yok");
@@ -71,7 +72,7 @@ function runTemplateTests() {
   assert(!welcome.html.includes("<script>alert"), "raw script yok");
   assert(!welcome.html.toLowerCase().includes("password"), "welcome password yok");
   assert(!welcome.text.toLowerCase().includes("smtp"), "welcome smtp yok");
-  assert(welcome.text.includes("http://localhost:3001/aktivasyon?token=abc"), "plain link");
+  assert(welcome.text.includes("http://localhost:3001/aktivasyon#token=abc"), "plain fragment link");
 
   const notify = renderPlatformNewTenantEmail({
     tenantName: "Acme",
@@ -263,10 +264,16 @@ async function main() {
     assert(emailsOk.welcome?.status === "SENT", "welcome SENT");
     assert(emailsOk.platformNotification?.status === "SENT", "platform SENT");
     const tenantOk = createdOk.body.tenant as { id: string };
+    const ownerMembership = await prisma.membership.findFirst({
+      where: { tenantId: tenantOk.id },
+      include: { user: true },
+    });
+    assert(ownerMembership?.status === "INVITED", "yeni org üyeliği INVITED");
+    assert(ownerMembership?.user.isActive === false, "kullanıcı henüz aktif değil");
     const welcomeMsg = mockMailProvider.sent.find((m) => m.subject.includes("hesabınız oluşturuldu"));
     assert(welcomeMsg, "welcome mock gönderildi");
     assert(!JSON.stringify(welcomeMsg).toLowerCase().includes("app-password-secret"), "welcome içinde smtp şifre yok");
-    const tokenMatch = welcomeMsg?.html.match(/token=([a-f0-9]+)/i);
+    const tokenMatch = welcomeMsg?.html.match(/#token=([a-f0-9]+)/i);
     assert(Boolean(tokenMatch?.[1]), "aktivasyon tokenı mailde");
     const activationToken = tokenMatch![1];
     const hashed = hashActivationToken(activationToken);
@@ -282,7 +289,7 @@ async function main() {
         name: `Faz25 Verify Fail ${Date.now()}`,
         managerFullName: "Yönetici Fail",
         managerEmail: MANAGER_FAIL,
-        plan: "STANDARD",
+        plan: "DEMO",
         trialDays: 7,
       },
     });
