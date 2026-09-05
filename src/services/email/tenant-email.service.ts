@@ -13,8 +13,7 @@ import { renderPlatformNewTenantEmail, renderTenantWelcomeEmail } from "./templa
 
 const PLAN_LABELS: Record<string, string> = {
   DEMO: "Demo",
-  STANDARD: "Standart",
-  PROFESSIONAL: "Profesyonel",
+  ANNUAL: "Yıllık",
 };
 
 async function loadTenantContext(input: { tenantId?: string; userId?: string }) {

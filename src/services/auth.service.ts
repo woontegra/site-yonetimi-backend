@@ -269,6 +269,60 @@ export class AuthService {
     return this.toPublicUser(refreshed, usableMemberships(refreshed.memberships));
   }
 
+  async updateProfile(userId: string, input: { fullName: string }): Promise<PublicUser> {
+    const fullName = input.fullName.trim();
+    if (fullName.length < 2) {
+      throw new HttpError(400, "Ad soyad en az 2 karakter olmalıdır.");
+    }
+    if (fullName.length > 120) {
+      throw new HttpError(400, "Ad soyad çok uzun.");
+    }
+
+    const existing = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true },
+    });
+    if (!existing || !existing.isActive) {
+      throw new HttpError(401, "Oturum geçersiz.");
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: { fullName },
+    });
+
+    return this.getMe(userId);
+  }
+
+  async changePassword(
+    userId: string,
+    input: { currentPassword: string; newPassword: string },
+  ): Promise<void> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, isActive: true, passwordHash: true },
+    });
+    if (!user || !user.isActive) {
+      throw new HttpError(401, "Oturum geçersiz.");
+    }
+
+    const matches = await bcrypt.compare(input.currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new HttpError(400, "Mevcut şifreniz doğru değil.");
+    }
+
+    const sameAsCurrent = await bcrypt.compare(input.newPassword, user.passwordHash);
+    if (sameAsCurrent) {
+      throw new HttpError(400, "Yeni şifre mevcut şifrenizle aynı olamaz.");
+    }
+
+    const passwordHash = await bcrypt.hash(input.newPassword, 10);
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+  }
+
   private toPublicUser(
     user: {
       id: string;

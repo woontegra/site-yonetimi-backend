@@ -60,7 +60,7 @@ export class ExpenseTypeService {
       select: { id: true },
     });
     if (existing) {
-      throw new HttpError(409, "Bu gider türü zaten mevcut.");
+      throw new HttpError(409, "Bu isimde bir gider kategorisi zaten bulunuyor.");
     }
 
     const maxSort = await prisma.expenseType.aggregate({
@@ -98,7 +98,7 @@ export class ExpenseTypeService {
         },
         select: { id: true },
       });
-      if (duplicate) throw new HttpError(409, "Bu gider türü zaten mevcut.");
+      if (duplicate) throw new HttpError(409, "Bu isimde bir gider kategorisi zaten bulunuyor.");
     }
 
     const row = await prisma.expenseType.update({

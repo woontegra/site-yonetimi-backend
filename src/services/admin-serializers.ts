@@ -1,6 +1,5 @@
 import type { Subscription, SubscriptionStatus } from "@prisma/client";
-import { daysUntil } from "../utils/admin";
-import { resolveLiveStatus } from "./entitlement.service";
+import { resolveEffectiveStatus, toLicenseView } from "./entitlement.service";
 
 export type AdminOwnerView = {
   id: string;
@@ -27,20 +26,14 @@ export function pickOwner(
 
 export function toSubscriptionView(subscription: Subscription | null) {
   if (!subscription) return null;
-  const status = resolveLiveStatus(subscription);
-  return {
-    id: subscription.id,
-    plan: subscription.plan,
-    status,
-    storedStatus: subscription.status as SubscriptionStatus,
-    startsAt: subscription.startsAt.toISOString(),
-    endsAt: subscription.endsAt.toISOString(),
-    trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
-    cancelledAt: subscription.cancelledAt?.toISOString() ?? null,
-    remainingDays: daysUntil(subscription.endsAt),
-    note: subscription.note,
-    updatedAt: subscription.updatedAt.toISOString(),
-  };
+  return toLicenseView(subscription);
+}
+
+export function resolveLiveStatus(subscription: {
+  status: SubscriptionStatus;
+  endsAt: Date;
+}): SubscriptionStatus {
+  return resolveEffectiveStatus(subscription);
 }
 
 export const notDeleted = { deletedAt: null } as const;

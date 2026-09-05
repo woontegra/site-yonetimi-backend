@@ -1,96 +1,185 @@
-import type { Subscription, SubscriptionStatus } from "@prisma/client";
+import type { Prisma, Subscription, SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma";
-import { daysUntil } from "../utils/admin";
+import {
+  annualNetPrice,
+  computeLicensePrice,
+  demoPriceSnapshot,
+  type LicensePriceSnapshot,
+} from "../config/license.config";
+import {
+  addCalendarDaysEndOfDay,
+  endOfDayFrom,
+  extendBaseDate,
+  isPastEnd,
+  remainingCalendarDays,
+} from "../utils/license-dates";
 import { HttpError } from "../utils/httpError";
 
-/**
- * Abonelik bilgisi için merkezi okuma.
- *
- * Lisans süresi dolduğunda veya kayıt yokken hiçbir tenant verisi silinmez.
- * Bu fazda tenant API kilidi kapalıdır (LICENSE_ENFORCEMENT !== "true").
- * Kilidi açıldığında bile isPlatformAdmin (DB) abonelikten muaftır.
- */
-export function isLicenseEnforcementEnabled(): boolean {
-  return process.env.LICENSE_ENFORCEMENT === "true";
+export type EffectiveLicenseStatus = SubscriptionStatus;
+
+export type LicenseView = {
+  id: string;
+  plan: SubscriptionPlan;
+  status: EffectiveLicenseStatus;
+  storedStatus: SubscriptionStatus;
+  startsAt: string;
+  endsAt: string;
+  remainingDays: number;
+  isExpired: boolean;
+  readOnly: boolean;
+  netPrice: number;
+  vatRate: number;
+  vatAmount: number;
+  grossPrice: number;
+  currency: string;
+  activatedAt: string | null;
+  suspendedAt: string | null;
+  cancelledAt: string | null;
+  note: string | null;
+  version: number;
+  updatedAt: string;
+};
+
+function dec(value: Prisma.Decimal | number | null | undefined): number {
+  if (value == null) return 0;
+  return Number(value);
 }
 
-type SubscriptionValidityInput = {
-  status: SubscriptionStatus;
-  endsAt: Date;
-} | null;
+export function resolveEffectiveStatus(
+  subscription: { status: SubscriptionStatus; endsAt: Date },
+  now = new Date(),
+): EffectiveLicenseStatus {
+  if (subscription.status === "SUSPENDED" || subscription.status === "CANCELLED") {
+    return subscription.status;
+  }
+  if (isPastEnd(subscription.endsAt, now)) return "EXPIRED";
+  return "ACTIVE";
+}
 
-export function isSubscriptionCurrentlyValid(subscription: SubscriptionValidityInput): boolean {
+export function isLicenseReadOnly(
+  subscription: { status: SubscriptionStatus; endsAt: Date } | null,
+  now = new Date(),
+): boolean {
+  if (!subscription) return false;
+  const status = resolveEffectiveStatus(subscription, now);
+  return status === "EXPIRED" || status === "SUSPENDED" || status === "CANCELLED";
+}
+
+export function isSubscriptionCurrentlyValid(
+  subscription: { status: SubscriptionStatus; endsAt: Date } | null,
+  now = new Date(),
+): boolean {
   if (!subscription) return true;
-  if (subscription.status === "SUSPENDED" || subscription.status === "CANCELLED") return false;
-  if (subscription.status === "EXPIRED") return false;
-  return subscription.endsAt.getTime() >= Date.now();
+  return !isLicenseReadOnly(subscription, now);
 }
 
 export type LicenseAccessReason =
   | "inactive_user"
   | "platform_admin_exempt"
-  | "enforcement_disabled"
-  | "subscription_valid"
-  | "subscription_invalid";
+  | "subscription_writable"
+  | "subscription_readonly"
+  | "subscription_missing_ok";
 
 export type LicenseAccessDecision = {
   allowed: boolean;
+  /** Yazma izni (GET her zaman ayrı). */
+  writable: boolean;
   exempt: boolean;
+  readOnly: boolean;
   reason: LicenseAccessReason;
 };
 
 export function decideLicenseAccess(input: {
   isActive: boolean;
   isPlatformAdmin: boolean;
-  subscription: SubscriptionValidityInput;
-  enforcementEnabled: boolean;
+  subscription: { status: SubscriptionStatus; endsAt: Date } | null;
+  now?: Date;
 }): LicenseAccessDecision {
   if (!input.isActive) {
-    return { allowed: false, exempt: false, reason: "inactive_user" };
+    return {
+      allowed: false,
+      writable: false,
+      exempt: false,
+      readOnly: true,
+      reason: "inactive_user",
+    };
   }
 
   if (input.isPlatformAdmin) {
-    return { allowed: true, exempt: true, reason: "platform_admin_exempt" };
+    return {
+      allowed: true,
+      writable: true,
+      exempt: true,
+      readOnly: false,
+      reason: "platform_admin_exempt",
+    };
   }
 
-  if (!input.enforcementEnabled) {
-    return { allowed: true, exempt: false, reason: "enforcement_disabled" };
+  if (!input.subscription) {
+    return {
+      allowed: true,
+      writable: true,
+      exempt: false,
+      readOnly: false,
+      reason: "subscription_missing_ok",
+    };
   }
 
-  if (isSubscriptionCurrentlyValid(input.subscription)) {
-    return { allowed: true, exempt: false, reason: "subscription_valid" };
+  const readOnly = isLicenseReadOnly(input.subscription, input.now);
+  if (readOnly) {
+    return {
+      allowed: true,
+      writable: false,
+      exempt: false,
+      readOnly: true,
+      reason: "subscription_readonly",
+    };
   }
 
-  return { allowed: false, exempt: false, reason: "subscription_invalid" };
+  return {
+    allowed: true,
+    writable: true,
+    exempt: false,
+    readOnly: false,
+    reason: "subscription_writable",
+  };
+}
+
+/** @deprecated Eski env bayrağı — salt okunur mod artık varsayılan. */
+export function isLicenseEnforcementEnabled(): boolean {
+  return true;
+}
+
+export function toLicenseView(subscription: Subscription, now = new Date()): LicenseView {
+  const status = resolveEffectiveStatus(subscription, now);
+  const remainingDays = remainingCalendarDays(subscription.endsAt, now);
+  const readOnly = status === "EXPIRED" || status === "SUSPENDED" || status === "CANCELLED";
+  return {
+    id: subscription.id,
+    plan: subscription.plan,
+    status,
+    storedStatus: subscription.status,
+    startsAt: subscription.startsAt.toISOString(),
+    endsAt: subscription.endsAt.toISOString(),
+    remainingDays,
+    isExpired: status === "EXPIRED",
+    readOnly,
+    netPrice: dec(subscription.netPrice),
+    vatRate: dec(subscription.vatRate),
+    vatAmount: dec(subscription.vatAmount),
+    grossPrice: dec(subscription.grossPrice),
+    currency: subscription.currency,
+    activatedAt: subscription.activatedAt?.toISOString() ?? null,
+    suspendedAt: subscription.suspendedAt?.toISOString() ?? null,
+    cancelledAt: subscription.cancelledAt?.toISOString() ?? null,
+    note: subscription.note,
+    version: subscription.version,
+    updatedAt: subscription.updatedAt.toISOString(),
+  };
 }
 
 export async function getTenantSubscription(tenantId: string) {
   return prisma.subscription.findUnique({ where: { tenantId } });
-}
-
-export function resolveLiveStatus(subscription: {
-  status: SubscriptionStatus;
-  endsAt: Date;
-}): SubscriptionStatus {
-  if (subscription.status === "SUSPENDED" || subscription.status === "CANCELLED") {
-    return subscription.status;
-  }
-  if (subscription.endsAt.getTime() < Date.now() && subscription.status !== "EXPIRED") {
-    return "EXPIRED";
-  }
-  return subscription.status;
-}
-
-/** Tenant kullanıcısına dönen salt okunur lisans özeti. Admin alanları yok. */
-export function toTenantSubscriptionView(subscription: Subscription) {
-  return {
-    plan: subscription.plan,
-    status: resolveLiveStatus(subscription),
-    startsAt: subscription.startsAt.toISOString(),
-    endsAt: subscription.endsAt.toISOString(),
-    trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
-    remainingDays: daysUntil(subscription.endsAt),
-  };
 }
 
 export async function evaluateLicenseAccess(userId: string, tenantId: string | null) {
@@ -103,7 +192,13 @@ export async function evaluateLicenseAccess(userId: string, tenantId: string | n
     return {
       user: null as { isActive: boolean; isPlatformAdmin: boolean } | null,
       subscription: null as Subscription | null,
-      decision: { allowed: false, exempt: false, reason: "inactive_user" as const },
+      decision: {
+        allowed: false,
+        writable: false,
+        exempt: false,
+        readOnly: true,
+        reason: "inactive_user" as const,
+      },
     };
   }
 
@@ -112,7 +207,6 @@ export async function evaluateLicenseAccess(userId: string, tenantId: string | n
     isActive: user.isActive,
     isPlatformAdmin: user.isPlatformAdmin,
     subscription,
-    enforcementEnabled: isLicenseEnforcementEnabled(),
   });
 
   return { user, subscription, decision };
@@ -124,23 +218,110 @@ export async function getMyLicenseOverview(userId: string, tenantId: string) {
     throw new HttpError(401, "Oturum geçersiz.");
   }
 
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { id: true, name: true },
+  });
+
+  const view = subscription ? toLicenseView(subscription) : null;
+
   return {
     access: {
       isPlatformAdmin: user.isPlatformAdmin,
       exempt: decision.exempt,
+      readOnly: decision.exempt ? false : decision.readOnly,
       accountType: user.isPlatformAdmin ? ("PLATFORM_ADMIN" as const) : ("TENANT_USER" as const),
       managementAccess: user.isPlatformAdmin
         ? ("UNLIMITED" as const)
         : ("SUBSCRIPTION_BOUND" as const),
       licenseStatus: user.isPlatformAdmin ? ("EXEMPT" as const) : ("BOUND" as const),
     },
-    subscription: subscription ? toTenantSubscriptionView(subscription) : null,
+    organization: tenant,
+    licenseScope:
+      "Bu lisans organizasyonunuzdaki bütün kullanıcı ve siteleri kapsar." as const,
+    support: {
+      email: process.env.LICENSE_SUPPORT_EMAIL?.trim() || process.env.SUPPORT_EMAIL?.trim() || null,
+      renewalUrl: process.env.LICENSE_RENEWAL_URL?.trim() || null,
+    },
+    subscription: view,
   };
 }
 
-/** @deprecated Use getMyLicenseOverview. Kept for any remaining callers. */
+/** @deprecated */
 export async function getMySubscription(tenantId: string) {
   const subscription = await getTenantSubscription(tenantId);
   if (!subscription) return null;
-  return toTenantSubscriptionView(subscription);
+  return toLicenseView(subscription);
 }
+
+export function previewDemoEndsAt(startsAt: Date, days: number) {
+  return addCalendarDaysEndOfDay(startsAt, days);
+}
+
+export function previewAnnualFromDemo(demoEndsAt: Date, now = new Date()) {
+  const startsAt = now;
+  const base = demoEndsAt.getTime() > now.getTime() ? demoEndsAt : now;
+  const endsAt = addCalendarDaysEndOfDay(base, 365);
+  return { startsAt, endsAt, price: computeLicensePrice() };
+}
+
+export function previewAnnualRenew(endsAt: Date, now = new Date()) {
+  const base = extendBaseDate(endsAt, now);
+  return {
+    startsAt: now,
+    endsAt: addCalendarDaysEndOfDay(base, 365),
+    price: computeLicensePrice(),
+  };
+}
+
+export function priceForPlan(plan: SubscriptionPlan, customNet?: number): LicensePriceSnapshot {
+  if (plan === "DEMO") return demoPriceSnapshot();
+  return computeLicensePrice(customNet ?? annualNetPrice());
+}
+
+export function assertLicenseVersion(existing: { version: number; updatedAt: Date }, expected?: {
+  version?: number;
+  updatedAt?: string;
+}) {
+  if (expected?.version != null && expected.version !== existing.version) {
+    throw new HttpError(
+      409,
+      "Lisans ön izlemeden sonra değişti. Bilgileri yenileyin.",
+      "LICENSE_VERSION_CONFLICT",
+    );
+  }
+  if (expected?.updatedAt && expected.updatedAt !== existing.updatedAt.toISOString()) {
+    throw new HttpError(
+      409,
+      "Lisans ön izlemeden sonra değişti. Bilgileri yenileyin.",
+      "LICENSE_VERSION_CONFLICT",
+    );
+  }
+}
+
+export function licenseWriteForbiddenError(subscription: Subscription) {
+  const view = toLicenseView(subscription);
+  const code =
+    view.status === "SUSPENDED"
+      ? "LICENSE_SUSPENDED"
+      : view.status === "CANCELLED"
+        ? "LICENSE_CANCELLED"
+        : "LICENSE_EXPIRED";
+  const message =
+    view.status === "SUSPENDED"
+      ? "Organizasyon erişimi platform yöneticisi tarafından askıya alındı. Yeni işlem oluşturamazsınız."
+      : view.status === "CANCELLED"
+        ? "Organizasyon lisansı iptal edilmiş. Verilerinizi görüntüleyebilir ancak yeni işlem oluşturamazsınız."
+        : "Organizasyon lisansınızın süresi sona erdi. Verilerinizi görüntüleyebilir ancak yeni işlem oluşturamazsınız.";
+  return new HttpError(403, message, code, {
+    license: {
+      type: view.plan,
+      status: view.status,
+      endsAt: view.endsAt,
+      remainingDays: view.remainingDays,
+      readOnly: true,
+    },
+  });
+}
+
+export { endOfDayFrom, addCalendarDaysEndOfDay, extendBaseDate };

@@ -544,6 +544,42 @@ export class DuesDefinitionService {
       canCreate: createPeriodCount > 0 && (skipPeriodCount === 0 || input.conflictPolicy === "SKIP"),
       requiresConflictChoice: skipPeriodCount > 0 && createPeriodCount > 0,
       blockedByConflicts: skipPeriodCount > 0 && createPeriodCount === 0,
+      check: {
+        allowed: createPeriodCount > 0,
+        requiresConfirmation: false,
+        issues: [
+          ...(createPeriodCount === 0
+            ? [
+                {
+                  code: "DUES_ALL_PERIODS_EXIST" as const,
+                  severity: "BLOCK" as const,
+                  title: "Yeni borç yok",
+                  message:
+                    "Seçilen dönem ve dairelerin tamamı daha önce borçlandırılmış. Oluşturulacak yeni borç bulunmuyor.",
+                },
+              ]
+            : []),
+          ...(skipPeriodCount > 0 && createPeriodCount > 0
+            ? [
+                {
+                  code: "DUES_PERIOD_CONFLICT" as const,
+                  severity: "INFO" as const,
+                  title: "Mevcut dönemler korunacak",
+                  message: `Seçilen dönemlerin ${skipPeriodCount}'ü daha önce borçlandırılmış. Mevcut kayıtlar korunacak, yalnız eksik ${createPeriodCount} dönem oluşturulacaktır.`,
+                },
+              ]
+            : []),
+        ],
+        summary: {
+          periodCount: periods.length,
+          createPeriodCount,
+          skipPeriodCount,
+          totalDebtCount: totalDebts,
+          totalChargeAmount: toMoneyString(totalCharge),
+        },
+        proposedAllocation: [],
+        debtSnapshot: [],
+      },
     };
   }
 

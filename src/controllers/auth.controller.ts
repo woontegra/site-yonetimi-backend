@@ -20,16 +20,33 @@ const activationTokenSchema = z.object({
   token: z.string().trim().min(16, "Aktivasyon bağlantısı geçersiz."),
 });
 
+const passwordPolicy = z
+  .string()
+  .min(8, "Şifre en az 8 karakter olmalı ve harf ile rakam içermelidir.")
+  .max(128)
+  .refine(
+    (value) => /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(value) && /\d/.test(value),
+    "Şifre en az 8 karakter olmalı ve harf ile rakam içermelidir.",
+  );
+
 const activateSchema = activationTokenSchema.extend({
-  password: z
-    .string()
-    .min(8, "Şifre en az 8 karakter olmalı ve harf ile rakam içermelidir.")
-    .max(128)
-    .refine(
-      (value) => /[A-Za-zÇĞİÖŞÜçğıöşü]/.test(value) && /\d/.test(value),
-      "Şifre en az 8 karakter olmalı ve harf ile rakam içermelidir.",
-    ),
+  password: passwordPolicy,
 });
+
+const updateProfileSchema = z.object({
+  fullName: z.string().trim().min(2, "Ad soyad en az 2 karakter olmalıdır.").max(120),
+});
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Mevcut şifre gerekli."),
+    newPassword: passwordPolicy,
+    confirmPassword: z.string().min(1, "Yeni şifre tekrarı gerekli."),
+  })
+  .refine((value) => value.newPassword === value.confirmPassword, {
+    message: "Yeni şifreler eşleşmiyor.",
+    path: ["confirmPassword"],
+  });
 
 function clientKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
@@ -78,6 +95,42 @@ export async function me(req: Request, res: Response, next: NextFunction): Promi
     }
     const user = await authService.getMe(req.auth.userId);
     res.status(200).json({ user });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function updateProfile(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.auth) {
+      throw new HttpError(401, "Oturum açmanız gerekiyor.");
+    }
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues[0]?.message ?? "Geçersiz istek.");
+    }
+    const user = await authService.updateProfile(req.auth.userId, parsed.data);
+    res.status(200).json({ user });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changePassword(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.auth) {
+      throw new HttpError(401, "Oturum açmanız gerekiyor.");
+    }
+    assertRateLimit(`change-password:${req.auth.userId}`, 10, 15 * 60 * 1000);
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new HttpError(400, parsed.error.issues[0]?.message ?? "Geçersiz istek.");
+    }
+    await authService.changePassword(req.auth.userId, {
+      currentPassword: parsed.data.currentPassword,
+      newPassword: parsed.data.newPassword,
+    });
+    res.status(200).json({ ok: true });
   } catch (error) {
     next(error);
   }

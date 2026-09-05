@@ -1,9 +1,10 @@
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
-import type { Prisma, SubscriptionPlan, SubscriptionStatus } from "@prisma/client";
+import type { Prisma, SubscriptionPlan } from "@prisma/client";
 import { prisma } from "../lib/prisma";
+import { LICENSE_ANNUAL_DAYS, LICENSE_DEMO_DAYS } from "../config/license.config";
 import { HttpError } from "../utils/httpError";
-import { addDays, addMonths, addYears, slugifyTenantName } from "../utils/admin";
+import { slugifyTenantName } from "../utils/admin";
 import { assertRateLimit } from "../utils/rate-limit";
 import { writeAdminAudit } from "./admin-audit.service";
 import { pickOwner, toSubscriptionView } from "./admin-serializers";
@@ -13,6 +14,8 @@ import {
   isProtectedTenant,
   permanentlyDeleteTenant,
 } from "./admin-tenant-delete.service";
+import { adminSubscriptionService } from "./admin-subscription.service";
+import { addCalendarDaysEndOfDay, endOfDayFrom, priceForPlan } from "./entitlement.service";
 
 const tenantListSelect = {
   id: true,
@@ -81,8 +84,8 @@ export class AdminTenantService {
 
     if (query.filter === "aktif") where.isActive = true;
     if (query.filter === "pasif") where.isActive = false;
-    if (query.filter === "deneme") where.subscription = { status: "TRIAL" };
-    if (query.filter === "lisansli") where.subscription = { status: "ACTIVE" };
+    if (query.filter === "deneme") where.subscription = { plan: "DEMO", status: { notIn: ["CANCELLED"] } };
+    if (query.filter === "lisansli") where.subscription = { plan: "ANNUAL", status: { notIn: ["CANCELLED"] } };
 
     const skip = (query.page - 1) * query.perPage;
     const [items, total] = await prisma.$transaction([
@@ -110,10 +113,11 @@ export class AdminTenantService {
       name: string;
       managerFullName: string;
       managerEmail: string;
-      plan?: "DEMO" | "PROFESSIONAL";
+      plan?: "DEMO" | "ANNUAL";
       trialDays?: number;
-      licenseTerm?: "1m" | "3m" | "6m" | "1y" | "custom";
       endsAt?: Date;
+      startsAt?: Date;
+      netPrice?: number;
     },
   ) {
     assertRateLimit(`tenant-create:${adminUserId}`, 20, 15 * 60 * 1000);
@@ -129,22 +133,15 @@ export class AdminTenantService {
 
     const slug = await this.uniqueSlug(slugifyTenantName(name));
     const passwordHash = await bcrypt.hash(randomBytes(32).toString("hex"), 10);
-    const now = new Date();
-    const paid = plan === "PROFESSIONAL";
-    const trialDays = paid ? null : (input.trialDays ?? 7);
-    let endsAt: Date;
-    if (paid) {
-      const term = input.licenseTerm ?? "1y";
-      if (term === "custom") {
-        if (!input.endsAt) throw new HttpError(400, "Özel bitiş tarihi zorunludur.");
-        endsAt = input.endsAt;
-      } else if (term === "1m") endsAt = addMonths(now, 1);
-      else if (term === "3m") endsAt = addMonths(now, 3);
-      else if (term === "6m") endsAt = addMonths(now, 6);
-      else endsAt = addYears(now, 1);
-    } else {
-      endsAt = addDays(now, trialDays ?? 7);
-    }
+    const startsAt = input.startsAt ?? new Date();
+    const demoDays = input.trialDays ?? LICENSE_DEMO_DAYS;
+    const endsAt =
+      input.endsAt != null
+        ? endOfDayFrom(input.endsAt)
+        : plan === "ANNUAL"
+          ? addCalendarDaysEndOfDay(startsAt, LICENSE_ANNUAL_DAYS)
+          : addCalendarDaysEndOfDay(startsAt, demoDays);
+    const price = priceForPlan(plan, input.netPrice);
 
     const created = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -165,13 +162,39 @@ export class AdminTenantService {
         data: {
           tenantId: tenant.id,
           plan,
-          status: paid ? "ACTIVE" : "TRIAL",
-          startsAt: now,
+          status: "ACTIVE",
+          startsAt,
           endsAt,
-          trialEndsAt: paid ? null : endsAt,
+          ...price,
+          activatedAt: startsAt,
+          createdByPlatformAdminId: adminUserId,
+          lastModifiedByPlatformAdminId: adminUserId,
         },
       });
-      return { tenantId: tenant.id, userId: user.id };
+      const sub = await tx.subscription.findUniqueOrThrow({ where: { tenantId: tenant.id } });
+      await tx.subscriptionHistory.create({
+        data: {
+          subscriptionId: sub.id,
+          tenantId: tenant.id,
+          action: plan === "ANNUAL" ? "ANNUAL_STARTED" : "DEMO_STARTED",
+          previousValues: undefined,
+          newValues: {
+            plan,
+            status: "ACTIVE",
+            startsAt: startsAt.toISOString(),
+            endsAt: endsAt.toISOString(),
+            ...price,
+          },
+          reason: "Organizasyon oluşturulurken lisans tanımlandı.",
+          performedById: adminUserId,
+          netPrice: price.netPrice,
+          vatRate: price.vatRate,
+          vatAmount: price.vatAmount,
+          grossPrice: price.grossPrice,
+          currency: price.currency,
+        },
+      });
+      return { tenantId: tenant.id, userId: user.id, subscriptionId: sub.id };
     });
 
     await writeAdminAudit({
@@ -182,9 +205,9 @@ export class AdminTenantService {
       tenantId: created.tenantId,
       metadata: {
         plan,
-        trialDays,
-        licenseTerm: paid ? (input.licenseTerm ?? "1y") : null,
+        trialDays: plan === "DEMO" ? demoDays : null,
         endsAt: endsAt.toISOString(),
+        price,
         managerEmailMasked: managerEmail.replace(/^(.{2}).*(@.*)$/, "$1***$2"),
       },
     });
@@ -338,10 +361,17 @@ export class AdminTenantService {
     }));
   }
 
-  async listNotes(tenantId: string) {
+  async listNotes(tenantId: string, options?: { subjectUserId?: string | null }) {
     await this.assertExists(tenantId);
+    const where: { tenantId: string; deletedAt: null; subjectUserId?: string | null } = {
+      tenantId,
+      deletedAt: null,
+    };
+    if (options && "subjectUserId" in options) {
+      where.subjectUserId = options.subjectUserId ?? null;
+    }
     const items = await prisma.adminNote.findMany({
-      where: { tenantId, deletedAt: null },
+      where,
       orderBy: { createdAt: "desc" },
       include: { adminUser: { select: { id: true, fullName: true, email: true } } },
     });
@@ -349,14 +379,32 @@ export class AdminTenantService {
       id: item.id,
       content: item.content,
       createdAt: item.createdAt.toISOString(),
+      subjectUserId: item.subjectUserId,
       adminUser: item.adminUser,
     }));
   }
 
-  async addNote(adminUserId: string, tenantId: string, content: string) {
+  async addNote(
+    adminUserId: string,
+    tenantId: string,
+    content: string,
+    options?: { subjectUserId?: string | null },
+  ) {
     await this.assertExists(tenantId);
+    if (options?.subjectUserId) {
+      const subject = await prisma.user.findUnique({
+        where: { id: options.subjectUserId },
+        select: { id: true },
+      });
+      if (!subject) throw new HttpError(404, "Hedef kullanıcı bulunamadı.");
+    }
     const note = await prisma.adminNote.create({
-      data: { tenantId, adminUserId, content: content.trim() },
+      data: {
+        tenantId,
+        adminUserId,
+        content: content.trim(),
+        subjectUserId: options?.subjectUserId ?? null,
+      },
       include: { adminUser: { select: { id: true, fullName: true, email: true } } },
     });
     await writeAdminAudit({
@@ -365,11 +413,13 @@ export class AdminTenantService {
       targetType: "AdminNote",
       targetId: note.id,
       tenantId,
+      metadata: options?.subjectUserId ? { subjectUserId: options.subjectUserId } : undefined,
     });
     return {
       id: note.id,
       content: note.content,
       createdAt: note.createdAt.toISOString(),
+      subjectUserId: note.subjectUserId,
       adminUser: note.adminUser,
     };
   }
@@ -401,85 +451,50 @@ export class AdminTenantService {
       endsAt?: Date;
       plan?: SubscriptionPlan;
       trialDays?: number;
+      reason: string;
     },
   ) {
     await this.assertExists(tenantId);
-    const existing = await prisma.subscription.findUnique({ where: { tenantId } });
-    const now = new Date();
-
     if (input.trialDays != null) {
-      const endsAt = addDays(now, input.trialDays);
-      const saved = await prisma.subscription.upsert({
-        where: { tenantId },
-        create: {
-          tenantId,
-          plan: input.plan ?? existing?.plan ?? "DEMO",
-          status: "TRIAL",
-          startsAt: existing?.startsAt ?? now,
-          endsAt,
-          trialEndsAt: endsAt,
-        },
-        update: {
-          status: "TRIAL",
-          plan: input.plan ?? existing?.plan ?? "DEMO",
-          endsAt,
-          trialEndsAt: endsAt,
-          cancelledAt: null,
-        },
+      return adminSubscriptionService.extendDemo(adminUserId, tenantId, {
+        days: input.trialDays,
+        reason: input.reason,
       });
-      await writeAdminAudit({
-        adminUserId,
-        action: "subscription.trial",
-        targetType: "Subscription",
-        targetId: saved.id,
-        tenantId,
-        metadata: { days: input.trialDays, endsAt: endsAt.toISOString() },
-      });
-      return toSubscriptionView(saved);
     }
-
-    const baseEnd = existing && existing.endsAt > now ? existing.endsAt : now;
-    const endsAt = input.endsAt ?? addDays(baseEnd, input.days ?? 7);
-    const nextStatus = this.statusAfterExtend(existing?.status ?? "TRIAL", endsAt);
-    const saved = await prisma.subscription.upsert({
-      where: { tenantId },
-      create: {
+    if (input.endsAt) {
+      return adminSubscriptionService.setCustomEndsAt(
+        adminUserId,
         tenantId,
-        plan: input.plan ?? "DEMO",
-        status: nextStatus,
-        startsAt: now,
-        endsAt,
-        trialEndsAt: nextStatus === "TRIAL" ? endsAt : null,
-      },
-      update: {
-        endsAt,
-        status: nextStatus,
-        cancelledAt: null,
-        ...(input.plan ? { plan: input.plan } : {}),
-      },
+        input.endsAt,
+        input.reason,
+      );
+    }
+    const existing = await prisma.subscription.findUnique({ where: { tenantId } });
+    if (existing?.plan === "ANNUAL") {
+      return adminSubscriptionService.setCustomEndsAt(
+        adminUserId,
+        tenantId,
+        addCalendarDaysEndOfDay(
+          existing.endsAt.getTime() > Date.now() ? existing.endsAt : new Date(),
+          input.days ?? LICENSE_ANNUAL_DAYS,
+        ),
+        input.reason,
+      );
+    }
+    return adminSubscriptionService.extendDemo(adminUserId, tenantId, {
+      days: input.days ?? LICENSE_DEMO_DAYS,
+      reason: input.reason,
     });
-    await writeAdminAudit({
-      adminUserId,
-      action: "subscription.extend",
-      targetType: "Subscription",
-      targetId: saved.id,
-      tenantId,
-      metadata: {
-        days: input.days ?? null,
-        previousEndsAt: existing?.endsAt.toISOString() ?? null,
-        nextEndsAt: endsAt.toISOString(),
-      },
-    });
-    return toSubscriptionView(saved);
   }
 
-  private statusAfterExtend(current: SubscriptionStatus, endsAt: Date): SubscriptionStatus {
-    if (current === "SUSPENDED") return "SUSPENDED";
-    if (current === "CANCELLED" || current === "EXPIRED") {
-      return endsAt > new Date() ? "ACTIVE" : "EXPIRED";
+  private async uniqueSlug(base: string): Promise<string> {
+    let slug = base;
+    let n = 2;
+    while (await prisma.tenant.findUnique({ where: { slug }, select: { id: true } })) {
+      slug = `${base}-${n}`.slice(0, 60);
+      n += 1;
     }
-    if (current === "TRIAL") return "TRIAL";
-    return endsAt > new Date() ? "ACTIVE" : "EXPIRED";
+    return slug;
   }
 
   private async usageCounts(tenantId: string) {
@@ -491,16 +506,6 @@ export class AdminTenantService {
       prisma.communicationMessage.count({ where: { tenantId } }),
     ]);
     return { sites, apartments, users, persons, messages };
-  }
-
-  private async uniqueSlug(base: string): Promise<string> {
-    let slug = base;
-    let n = 2;
-    while (await prisma.tenant.findUnique({ where: { slug }, select: { id: true } })) {
-      slug = `${base}-${n}`.slice(0, 60);
-      n += 1;
-    }
-    return slug;
   }
 
   private async assertExists(id: string) {

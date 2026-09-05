@@ -2,19 +2,25 @@ import { Router } from "express";
 import {
   activateAdminTenant,
   activateAdminUser,
+  cancelAdminSubscription,
   changeAdminSubscriptionPlan,
+  convertAdminAnnualLicense,
   createAdminTenant,
   createAdminTenantNote,
   createAdminUserNote,
   deactivateAdminTenant,
   deactivateAdminUser,
   deleteAdminTenant,
+  deleteAdminUser,
+  extendAdminDemoLicense,
   extendAdminSubscription,
   extendAdminTenantSubscription,
   getAdminCommunication,
   getAdminIntegration,
   getAdminOverview,
   getAdminSite,
+  getAdminSubscription,
+  getAdminSubscriptionSummary,
   getAdminSystem,
   getAdminTenant,
   getAdminUser,
@@ -23,18 +29,31 @@ import {
   listAdminCommunications,
   listAdminIntegrations,
   listAdminSites,
+  listAdminSubscriptionHistory,
   listAdminSubscriptions,
   listAdminTenantAuditLogs,
   listAdminTenantNotes,
   listAdminTenantSites,
+  listAdminTenantStats,
   listAdminTenantUsers,
   listAdminTenants,
+  listAdminUserAccess,
+  listAdminUserActivity,
   listAdminUserAuditLogs,
+  listAdminUserCommunications,
+  listAdminUserNotes,
+  listAdminUserTenantSites,
   listAdminUsers,
+  previewAdminUserDelete,
   reactivateAdminSubscription,
+  renewAdminAnnualLicense,
   setAdminSubscriptionEndsAt,
+  startAdminAnnualLicense,
+  startAdminDemoLicense,
   suspendAdminSubscription,
   trialAdminTenantSubscription,
+  updateAdminUser,
+  updateAdminUserAccess,
 } from "../controllers/admin.controller";
 import {
   getAdminEmailIntegration,
@@ -56,6 +75,7 @@ export const adminRouter = Router();
 adminRouter.use(requireAuth, requirePlatformAdmin);
 
 adminRouter.get("/overview", getAdminOverview);
+adminRouter.get("/tenant-stats", listAdminTenantStats);
 adminRouter.get("/system", getAdminSystem);
 adminRouter.get("/audit-logs", listAdminAuditLogs);
 
@@ -76,17 +96,35 @@ adminRouter.get("/tenants/:id", getAdminTenant);
 
 adminRouter.get("/users/summary", getAdminUserSummary);
 adminRouter.get("/users", listAdminUsers);
+adminRouter.get("/users/:id/access", listAdminUserAccess);
+adminRouter.get("/users/:id/tenant-sites", listAdminUserTenantSites);
+adminRouter.get("/users/:id/activity", listAdminUserActivity);
+adminRouter.get("/users/:id/communications", listAdminUserCommunications);
+adminRouter.get("/users/:id/notes", listAdminUserNotes);
 adminRouter.get("/users/:id/audit-logs", listAdminUserAuditLogs);
+adminRouter.get("/users/:id/delete-preview", previewAdminUserDelete);
+adminRouter.patch("/users/:id", updateAdminUser);
+adminRouter.patch("/users/:id/access", updateAdminUserAccess);
 adminRouter.post("/users/:id/notes", createAdminUserNote);
 adminRouter.post("/users/:id/activate", activateAdminUser);
 adminRouter.post("/users/:id/deactivate", deactivateAdminUser);
 adminRouter.post("/users/:id/resend-invite", resendAdminUserInvite);
+adminRouter.delete("/users/:id", deleteAdminUser);
 adminRouter.get("/users/:id", getAdminUser);
 
 adminRouter.get("/sites", listAdminSites);
 adminRouter.get("/sites/:id", getAdminSite);
 
+adminRouter.get("/subscriptions/summary", getAdminSubscriptionSummary);
 adminRouter.get("/subscriptions", listAdminSubscriptions);
+adminRouter.get("/subscriptions/:tenantId/history", listAdminSubscriptionHistory);
+adminRouter.get("/subscriptions/:tenantId", getAdminSubscription);
+adminRouter.post("/subscriptions/:tenantId/demo/start", startAdminDemoLicense);
+adminRouter.post("/subscriptions/:tenantId/demo/extend", extendAdminDemoLicense);
+adminRouter.post("/subscriptions/:tenantId/convert-annual", convertAdminAnnualLicense);
+adminRouter.post("/subscriptions/:tenantId/annual/start", startAdminAnnualLicense);
+adminRouter.post("/subscriptions/:tenantId/annual/renew", renewAdminAnnualLicense);
+adminRouter.post("/subscriptions/:tenantId/cancel", cancelAdminSubscription);
 adminRouter.post("/subscriptions/:tenantId/extend", extendAdminSubscription);
 adminRouter.post("/subscriptions/:tenantId/plan", changeAdminSubscriptionPlan);
 adminRouter.post("/subscriptions/:tenantId/suspend", suspendAdminSubscription);

@@ -5,6 +5,8 @@ import {
   getPayment,
   listPayments,
   paymentMonthlySummary,
+  previewPayment,
+  previewPaymentCancel,
 } from "../controllers/payment.controller";
 import { requireAuth } from "../middleware/auth";
 import { requireSite } from "../middleware/site";
@@ -16,6 +18,8 @@ paymentRouter.use(requireAuth, requireTenant, requireSite);
 
 paymentRouter.get("/", requirePermission("payments.view"), listPayments);
 paymentRouter.get("/summary/monthly", requirePermission("payments.view"), paymentMonthlySummary);
+paymentRouter.post("/preview", requirePermission("payments.create"), previewPayment);
+paymentRouter.get("/:id/cancel-preview", requirePermission("payments.cancel"), previewPaymentCancel);
 paymentRouter.get("/:id", requirePermission("payments.view"), getPayment);
 paymentRouter.post("/", requirePermission("payments.create"), createPayment);
 paymentRouter.delete("/:id", requirePermission("payments.cancel"), deletePayment);

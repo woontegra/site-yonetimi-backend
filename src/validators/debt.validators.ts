@@ -70,7 +70,7 @@ export const listApartmentDebtsQuerySchema = z.object({
     (value) => (value === "" ? undefined : value),
     z.string().uuid().optional(),
   ),
-  type: z.enum(["DUES", "MANUAL"]).optional(),
+  type: z.enum(["DUES", "MANUAL", "INTEREST"]).optional(),
   status: z.enum(["OPEN", "PAID", "CANCELLED"]).optional(),
   periodYear: z.coerce.number().int().optional(),
   periodMonth: z.coerce.number().int().min(1).max(12).optional(),

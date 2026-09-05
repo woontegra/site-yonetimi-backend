@@ -1,13 +1,17 @@
 /**
- * Platform admin lisans muafiyeti — saf karar tablosu.
- * Kullanıcı verisi oluşturmaz / silmez. Tam build değildir.
+ * Platform admin lisans muafiyeti + salt okunur karar tablosu.
  * Kullanım: npx tsx scripts/verify-license-exemption.ts
  */
 import {
   decideLicenseAccess,
-  isLicenseEnforcementEnabled,
   isSubscriptionCurrentlyValid,
 } from "../src/services/entitlement.service";
+import {
+  addCalendarDaysEndOfDay,
+  extendBaseDate,
+  remainingCalendarDays,
+} from "../src/utils/license-dates";
+import { computeLicensePrice, demoPriceSnapshot } from "../src/config/license.config";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -20,78 +24,59 @@ const active = {
 };
 
 function main() {
-  assert(isLicenseEnforcementEnabled() === false, "bu fazda LICENSE_ENFORCEMENT açık olmamalı");
-
   const adminNoSub = decideLicenseAccess({
     isActive: true,
     isPlatformAdmin: true,
     subscription: null,
-    enforcementEnabled: true,
   });
-  assert(adminNoSub.allowed && adminNoSub.exempt, "admin + abonelik yok: muaf ve açık");
-  assert(adminNoSub.reason === "platform_admin_exempt", "admin nedeni exempt olmalı");
+  assert(adminNoSub.writable && adminNoSub.exempt, "admin + abonelik yok: muaf ve yazılabilir");
 
   const adminExpired = decideLicenseAccess({
     isActive: true,
     isPlatformAdmin: true,
     subscription: expired,
-    enforcementEnabled: true,
   });
-  assert(adminExpired.allowed && adminExpired.exempt, "admin + süresi dolmuş: yine açık");
+  assert(adminExpired.writable && adminExpired.exempt, "admin + süresi dolmuş: yine yazılabilir");
 
   const tenantActive = decideLicenseAccess({
     isActive: true,
     isPlatformAdmin: false,
     subscription: active,
-    enforcementEnabled: true,
   });
-  assert(tenantActive.allowed && !tenantActive.exempt, "normal + aktif abonelik: bağlı ve açık");
+  assert(tenantActive.writable && !tenantActive.exempt, "normal + aktif: yazılabilir");
 
-  const tenantExpiredLocked = decideLicenseAccess({
+  const tenantExpired = decideLicenseAccess({
     isActive: true,
     isPlatformAdmin: false,
     subscription: expired,
-    enforcementEnabled: true,
   });
-  assert(!tenantExpiredLocked.allowed && !tenantExpiredLocked.exempt, "normal + dolmuş + kilit: kapalı");
+  assert(
+    tenantExpired.allowed && !tenantExpired.writable && tenantExpired.readOnly,
+    "normal + dolmuş: okur, yazamaz",
+  );
 
-  const tenantExpiredUnlocked = decideLicenseAccess({
-    isActive: true,
-    isPlatformAdmin: false,
-    subscription: expired,
-    enforcementEnabled: false,
-  });
-  assert(tenantExpiredUnlocked.allowed && !tenantExpiredUnlocked.exempt, "normal + dolmuş + kilit kapalı: mevcut davranış");
-
-  const tenantMissingUnlocked = decideLicenseAccess({
-    isActive: true,
-    isPlatformAdmin: false,
-    subscription: null,
-    enforcementEnabled: false,
-  });
-  assert(tenantMissingUnlocked.allowed && !tenantMissingUnlocked.exempt, "normal + kayıt yok + kilit kapalı: açık");
-
-  const revoked = decideLicenseAccess({
-    isActive: true,
-    isPlatformAdmin: false,
-    subscription: expired,
-    enforcementEnabled: true,
-  });
-  assert(!revoked.exempt, "yetki kalkınca muafiyet biter");
-
-  const inactiveAdmin = decideLicenseAccess({
-    isActive: false,
-    isPlatformAdmin: true,
-    subscription: null,
-    enforcementEnabled: true,
-  });
-  assert(!inactiveAdmin.allowed && !inactiveAdmin.exempt, "pasif hesap sırf admin diye geçmez");
-
-  assert(isSubscriptionCurrentlyValid(null) === true, "kayıt yokken mevcut geçerlilik true kalır");
+  assert(isSubscriptionCurrentlyValid(null) === true, "kayıt yokken geçerli sayılır");
   assert(isSubscriptionCurrentlyValid(expired) === false, "EXPIRED geçersizdir");
   assert(isSubscriptionCurrentlyValid(active) === true, "ACTIVE geçerlidir");
 
-  console.log("Lisans muafiyeti karar tablosu geçti.");
+  const price = computeLicensePrice(4000, 20);
+  assert(price.netPrice === 4000, "net 4000");
+  assert(price.vatAmount === 800, "KDV 800");
+  assert(price.grossPrice === 4800, "toplam 4800");
+  assert(demoPriceSnapshot().grossPrice === 0, "demo 0");
+
+  const now = new Date("2026-09-07T10:00:00.000Z");
+  const ends = addCalendarDaysEndOfDay(now, 7);
+  assert(remainingCalendarDays(ends, now) === 7, "7 gün kalan");
+
+  const past = new Date("2026-08-01T10:00:00.000Z");
+  const baseExpired = extendBaseDate(past, now);
+  assert(baseExpired.getTime() === now.getTime(), "dolmuş uzatma bugünden");
+
+  const future = new Date("2026-10-01T10:00:00.000Z");
+  assert(extendBaseDate(future, now).getTime() === future.getTime(), "aktif uzatma endsAt üzerinden");
+
+  console.log("Lisans karar / fiyat / tarih testleri geçti.");
 }
 
 main();

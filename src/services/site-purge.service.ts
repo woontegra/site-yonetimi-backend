@@ -126,6 +126,9 @@ export async function permanentlyDeleteSite(
 
         await tx.expense.deleteMany({ where: { tenantId, siteId } });
 
+        await tx.interestApplication.deleteMany({ where: { tenantId, siteId } });
+        await tx.interestDecision.deleteMany({ where: { tenantId, siteId } });
+
         if (apartmentIds.length > 0) {
           await tx.payment.deleteMany({ where: { tenantId, apartmentId: { in: apartmentIds } } });
           await tx.apartmentDebt.deleteMany({ where: { tenantId, apartmentId: { in: apartmentIds } } });

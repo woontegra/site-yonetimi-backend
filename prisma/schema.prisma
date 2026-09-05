@@ -16,76 +16,85 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships               Membership[]
-  tenantAuditLogs           TenantAuditLog[]
-  subscription              Subscription?
-  adminNotes                AdminNote[]
-  adminAuditLogs            AdminAuditLog[]
-  buildings                 Building[]
-  apartments                Apartment[]
-  persons                   Person[]
-  apartmentPersonRelations  ApartmentPersonRelation[]
-  duesDefinitions           DuesDefinition[]
-  apartmentDuesExemptions   ApartmentDuesExemption[]
-  apartmentDebts            ApartmentDebt[]
-  payments                  Payment[]
-  paymentAllocations        PaymentAllocation[]
-  paymentIdempotencyKeys    PaymentIdempotencyKey[]
-  expenseTypes              ExpenseType[]
-  expenses                  Expense[]
-  bankAccounts              BankAccount[]
-  bankTransactions          BankTransaction[]
-  bankMatchingRules         BankMatchingRule[]
-  bankColumnMappingTemplates BankColumnMappingTemplate[]
-  suppliers                 Supplier[]
-  employees                 Employee[]
-  employeeAssignments       EmployeeAssignment[]
-  visitors                  Visitor[]
-  visits                    Visit[]
-  sites                     Site[]
-  assetCategories           AssetCategory[]
-  assets                    Asset[]
-  assetMovements            AssetMovement[]
-  assetMaintenances         AssetMaintenance[]
-  announcements             Announcement[]
-  announcementBuildings     AnnouncementBuilding[]
-  announcementApartments    AnnouncementApartment[]
-  feedbackCategories        FeedbackCategory[]
-  feedbackRecords           FeedbackRecord[]
-  feedbackStatusHistories   FeedbackStatusHistory[]
-  messageTemplates          MessageTemplate[]
-  communicationBatches      CommunicationBatch[]
-  communicationMessages     CommunicationMessage[]
+  memberships                  Membership[]
+  tenantAuditLogs              TenantAuditLog[]
+  subscription                 Subscription?
+  subscriptionHistory          SubscriptionHistory[]
+  adminNotes                   AdminNote[]
+  adminAuditLogs               AdminAuditLog[]
+  buildings                    Building[]
+  apartments                   Apartment[]
+  persons                      Person[]
+  apartmentPersonRelations     ApartmentPersonRelation[]
+  duesDefinitions              DuesDefinition[]
+  apartmentDuesExemptions      ApartmentDuesExemption[]
+  apartmentDebts               ApartmentDebt[]
+  payments                     Payment[]
+  paymentAllocations           PaymentAllocation[]
+  paymentIdempotencyKeys       PaymentIdempotencyKey[]
+  expenseTypes                 ExpenseType[]
+  expenses                     Expense[]
+  bankAccounts                 BankAccount[]
+  bankTransactions             BankTransaction[]
+  bankMatchingRules            BankMatchingRule[]
+  bankColumnMappingTemplates   BankColumnMappingTemplate[]
+  suppliers                    Supplier[]
+  employees                    Employee[]
+  employeeAssignments          EmployeeAssignment[]
+  visitors                     Visitor[]
+  visits                       Visit[]
+  sites                        Site[]
+  assetCategories              AssetCategory[]
+  assets                       Asset[]
+  assetMovements               AssetMovement[]
+  assetMaintenances            AssetMaintenance[]
+  announcements                Announcement[]
+  announcementBuildings        AnnouncementBuilding[]
+  announcementApartments       AnnouncementApartment[]
+  feedbackCategories           FeedbackCategory[]
+  feedbackRecords              FeedbackRecord[]
+  feedbackStatusHistories      FeedbackStatusHistory[]
+  messageTemplates             MessageTemplate[]
+  communicationBatches         CommunicationBatch[]
+  communicationMessages        CommunicationMessage[]
   communicationIdempotencyKeys CommunicationIdempotencyKey[]
-  whatsAppIntegrations      WhatsAppIntegration[]
-  whatsAppTemplates         WhatsAppTemplate[]
-  emailDeliveries           EmailDelivery[]
+  whatsAppIntegrations         WhatsAppIntegration[]
+  whatsAppTemplates            WhatsAppTemplate[]
+  emailDeliveries              EmailDelivery[]
+  interestDecisions            InterestDecision[]
+  interestApplications         InterestApplication[]
 
   @@map("tenants")
 }
 
 model User {
-  id               String   @id @default(uuid())
-  email            String   @unique
-  passwordHash     String
-  fullName         String
-  isActive         Boolean  @default(true)
+  id              String    @id @default(uuid())
+  email           String    @unique
+  passwordHash    String
+  fullName        String
+  isActive        Boolean   @default(true)
   /// Platform operatör yetkisi. Tenant UserRole ile karıştırılmaz.
-  isPlatformAdmin  Boolean  @default(false)
-  lastLoginAt      DateTime?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  isPlatformAdmin Boolean   @default(false)
+  lastLoginAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
-  memberships    Membership[]
-  tenantAuditLogs TenantAuditLog[]
-  announcements  Announcement[]
-  adminNotes     AdminNote[]
-  adminAuditLogs AdminAuditLog[]
-  activationTokens UserActivationToken[]
-  emailDeliveries  EmailDelivery[]
-  platformEmailUpdates PlatformEmailIntegration[]
-  duesExemptionsCreated ApartmentDuesExemption[] @relation("ApartmentDuesExemptionCreatedBy")
-  duesExemptionsRevoked ApartmentDuesExemption[] @relation("ApartmentDuesExemptionRevokedBy")
+  memberships                 Membership[]
+  tenantAuditLogs             TenantAuditLog[]
+  announcements               Announcement[]
+  adminNotes                  AdminNote[]
+  adminAuditLogs              AdminAuditLog[]
+  activationTokens            UserActivationToken[]
+  emailDeliveries             EmailDelivery[]
+  platformEmailUpdates        PlatformEmailIntegration[]
+  duesExemptionsCreated       ApartmentDuesExemption[]   @relation("ApartmentDuesExemptionCreatedBy")
+  duesExemptionsRevoked       ApartmentDuesExemption[]   @relation("ApartmentDuesExemptionRevokedBy")
+  interestDecisionsCreated    InterestDecision[]         @relation("InterestDecisionCreatedBy")
+  interestApplicationsApplied InterestApplication[]      @relation("InterestApplicationAppliedBy")
+  subscriptionsCreated        Subscription[]             @relation("SubscriptionCreatedBy")
+  subscriptionsModified       Subscription[]             @relation("SubscriptionModifiedBy")
+  subscriptionHistory         SubscriptionHistory[]
+  adminNotesAsSubject         AdminNote[]                @relation("AdminNoteSubjectUser")
 
   @@map("users")
 }
@@ -110,20 +119,20 @@ enum MembershipStatus {
 }
 
 model Membership {
-  id                 String           @id @default(uuid())
-  userId             String
-  tenantId           String
-  role               UserRole         @default(SITE_YONETICISI)
-  status             MembershipStatus @default(ACTIVE)
-  allSites           Boolean          @default(true)
-  permissions        Json             @default("[]")
-  permissionVersion  Int              @default(0)
-  invitedAt          DateTime?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  id                String           @id @default(uuid())
+  userId            String
+  tenantId          String
+  role              UserRole         @default(SITE_YONETICISI)
+  status            MembershipStatus @default(ACTIVE)
+  allSites          Boolean          @default(true)
+  permissions       Json             @default("[]")
+  permissionVersion Int              @default(0)
+  invitedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  user        User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tenant      Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   siteAccesses MembershipSiteAccess[]
 
   @@unique([userId, tenantId])
@@ -186,23 +195,25 @@ model Site {
   updatedAt        DateTime        @updatedAt
   deletedAt        DateTime?
 
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  membershipSiteAccesses MembershipSiteAccess[]
-  buildings           Building[]
-  expenses            Expense[]
-  bankAccounts        BankAccount[]
-  bankMatchingRules   BankMatchingRule[]
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  membershipSiteAccesses     MembershipSiteAccess[]
+  buildings                  Building[]
+  expenses                   Expense[]
+  bankAccounts               BankAccount[]
+  bankMatchingRules          BankMatchingRule[]
   bankColumnMappingTemplates BankColumnMappingTemplate[]
-  employeeAssignments EmployeeAssignment[]
-  assets              Asset[]
-  assetMovements      AssetMovement[]
-  assetMaintenances   AssetMaintenance[]
-  announcements       Announcement[]
-  feedbackRecords     FeedbackRecord[]
-  feedbackStatusHistories FeedbackStatusHistory[]
-  communicationBatches    CommunicationBatch[]
-  communicationMessages   CommunicationMessage[]
-  apartmentDuesExemptions ApartmentDuesExemption[]
+  employeeAssignments        EmployeeAssignment[]
+  assets                     Asset[]
+  assetMovements             AssetMovement[]
+  assetMaintenances          AssetMaintenance[]
+  announcements              Announcement[]
+  feedbackRecords            FeedbackRecord[]
+  feedbackStatusHistories    FeedbackStatusHistory[]
+  communicationBatches       CommunicationBatch[]
+  communicationMessages      CommunicationMessage[]
+  apartmentDuesExemptions    ApartmentDuesExemption[]
+  interestDecisions          InterestDecision[]
+  interestApplications       InterestApplication[]
 
   @@index([tenantId, deletedAt])
   @@index([tenantId, isActive])
@@ -227,17 +238,17 @@ model Building {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site                Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  apartments          Apartment[]
-  duesDefinitions     DuesDefinition[]
-  apartmentDebts      ApartmentDebt[]
-  expenses            Expense[]
-  bankMatchingRules   BankMatchingRule[]
-  employeeAssignments EmployeeAssignment[]
-  assets              Asset[]
-  movementsFrom       AssetMovement[]     @relation("AssetMovementFromBuilding")
-  movementsTo         AssetMovement[]     @relation("AssetMovementToBuilding")
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site                  Site                   @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  apartments            Apartment[]
+  duesDefinitions       DuesDefinition[]
+  apartmentDebts        ApartmentDebt[]
+  expenses              Expense[]
+  bankMatchingRules     BankMatchingRule[]
+  employeeAssignments   EmployeeAssignment[]
+  assets                Asset[]
+  movementsFrom         AssetMovement[]        @relation("AssetMovementFromBuilding")
+  movementsTo           AssetMovement[]        @relation("AssetMovementToBuilding")
   announcementBuildings AnnouncementBuilding[]
   feedbackRecords       FeedbackRecord[]
 
@@ -248,27 +259,27 @@ model Building {
 }
 
 model Apartment {
-  id            String    @id @default(uuid())
-  tenantId      String
-  buildingId    String
-  number        String
-  floor         String?
-  roomType      String?
-  squareMeters  Float?
-  hasBalcony    Boolean?
-  isActive      Boolean   @default(true)
-  description   String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id           String    @id @default(uuid())
+  tenantId     String
+  buildingId   String
+  number       String
+  floor        String?
+  roomType     String?
+  squareMeters Float?
+  hasBalcony   Boolean?
+  isActive     Boolean   @default(true)
+  description  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
-  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  building  Building                  @relation(fields: [buildingId], references: [id], onDelete: Restrict)
-  relations ApartmentPersonRelation[]
-  debts     ApartmentDebt[]
-  duesExemptions ApartmentDuesExemption[]
-  payments  Payment[]
-  matchedBankTransactions BankTransaction[] @relation("BankTxMatchedApartment")
+  tenant                  Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  building                Building                  @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  relations               ApartmentPersonRelation[]
+  debts                   ApartmentDebt[]
+  duesExemptions          ApartmentDuesExemption[]
+  payments                Payment[]
+  matchedBankTransactions BankTransaction[]         @relation("BankTxMatchedApartment")
   bankMatchingRules       BankMatchingRule[]
   visits                  Visit[]
   announcementApartments  AnnouncementApartment[]
@@ -300,10 +311,10 @@ model Person {
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  relations ApartmentPersonRelation[]
-  payments  Payment[]
-  matchedBankTransactions BankTransaction[] @relation("BankTxMatchedPerson")
+  tenant                  Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  relations               ApartmentPersonRelation[]
+  payments                Payment[]
+  matchedBankTransactions BankTransaction[]         @relation("BankTxMatchedPerson")
   bankMatchingRules       BankMatchingRule[]
   hostedVisits            Visit[]
   feedbackRecords         FeedbackRecord[]
@@ -400,7 +411,9 @@ model DuesDefinition {
   dueDate           DateTime
   description       String?
   isActive          Boolean   @default(true)
-  /** Aynı toplu borçlandırma isteğinden oluşan tanımları gruplar. */
+  /**
+   * Aynı toplu borçlandırma isteğinden oluşan tanımları gruplar.
+   */
   assessmentBatchId String?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
@@ -419,6 +432,7 @@ model DuesDefinition {
 enum ApartmentDebtType {
   DUES
   MANUAL
+  INTEREST
 }
 
 enum ApartmentDebtStatus {
@@ -447,12 +461,16 @@ model ApartmentDebt {
   updatedAt        DateTime            @updatedAt
   cancelledAt      DateTime?
 
-  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  building       Building            @relation(fields: [buildingId], references: [id], onDelete: Restrict)
-  apartment      Apartment           @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
-  duesDefinition DuesDefinition?     @relation(fields: [duesDefinitionId], references: [id], onDelete: SetNull)
-  allocations    PaymentAllocation[]
-  communicationMessages CommunicationMessage[]
+  tenant                       Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  building                     Building               @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  apartment                    Apartment              @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  duesDefinition               DuesDefinition?        @relation(fields: [duesDefinitionId], references: [id], onDelete: SetNull)
+  allocations                  PaymentAllocation[]
+  communicationMessages        CommunicationMessage[]
+  /// Bu borç için üretilmiş gecikme faizi uygulamaları (kaynak borç).
+  interestApplicationsAsSource InterestApplication[]  @relation("InterestSourceDebt")
+  /// Bu kaydın kendisi bir faiz borcuysa uygulama satırı.
+  interestApplicationAsCharge  InterestApplication?   @relation("InterestChargeDebt")
 
   @@unique([duesDefinitionId, apartmentId])
   @@index([tenantId, status])
@@ -460,6 +478,77 @@ model ApartmentDebt {
   @@index([buildingId, status])
   @@index([periodYear, periodMonth])
   @@map("apartment_debts")
+}
+
+/// Gecikme faizi karar durumu.
+enum InterestDecisionStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+}
+
+/// Faiz oranı periyodu (ilk sürüm: yalnız aylık).
+enum InterestRatePeriod {
+  MONTHLY
+}
+
+/// Site bazlı gecikme faizi kararı. Karar yoksa faiz hesaplanmaz / uygulanmaz.
+model InterestDecision {
+  id              String                 @id @default(uuid())
+  tenantId        String
+  siteId          String
+  name            String
+  startDate       DateTime
+  endDate         DateTime
+  /// Kullanıcının girdiği aylık yüzde (ör. 5.00 = %5 / ay). Float değil Decimal.
+  monthlyRate     Decimal                @db.Decimal(8, 4)
+  ratePeriod      InterestRatePeriod     @default(MONTHLY)
+  description     String?
+  status          InterestDecisionStatus @default(DRAFT)
+  createdByUserId String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  tenant       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site         Site                  @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdBy    User?                 @relation("InterestDecisionCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  applications InterestApplication[]
+
+  @@index([tenantId, siteId, status])
+  @@index([siteId, startDate, endDate])
+  @@map("interest_decisions")
+}
+
+/// Uygulanmış aylık faiz kaydı. Aynı kaynak borç + dönem için tek satır (mükerrer engeli).
+model InterestApplication {
+  id              String   @id @default(uuid())
+  tenantId        String
+  siteId          String
+  decisionId      String
+  sourceDebtId    String
+  interestDebtId  String   @unique
+  periodYear      Int
+  periodMonth     Int
+  /// Faize esas kalan ana para (ödemeler düşülmüş).
+  principalBase   Decimal  @db.Decimal(12, 2)
+  monthlyRate     Decimal  @db.Decimal(8, 4)
+  interestAmount  Decimal  @db.Decimal(12, 2)
+  calculationNote String?
+  appliedByUserId String?
+  appliedAt       DateTime @default(now())
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site         Site             @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  decision     InterestDecision @relation(fields: [decisionId], references: [id], onDelete: Restrict)
+  sourceDebt   ApartmentDebt    @relation("InterestSourceDebt", fields: [sourceDebtId], references: [id], onDelete: Restrict)
+  interestDebt ApartmentDebt    @relation("InterestChargeDebt", fields: [interestDebtId], references: [id], onDelete: Restrict)
+  appliedBy    User?            @relation("InterestApplicationAppliedBy", fields: [appliedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([sourceDebtId, periodYear, periodMonth])
+  @@index([tenantId, siteId])
+  @@index([decisionId])
+  @@index([periodYear, periodMonth])
+  @@map("interest_applications")
 }
 
 enum PaymentMethod {
@@ -489,10 +578,10 @@ model Payment {
   updatedAt     DateTime      @updatedAt
   cancelledAt   DateTime?
 
-  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  apartment   Apartment           @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
-  person      Person?             @relation(fields: [personId], references: [id], onDelete: SetNull)
-  allocations PaymentAllocation[]
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  apartment       Apartment           @relation(fields: [apartmentId], references: [id], onDelete: Restrict)
+  person          Person?             @relation(fields: [personId], references: [id], onDelete: SetNull)
+  allocations     PaymentAllocation[]
   bankTransaction BankTransaction?
 
   @@index([tenantId, status])
@@ -575,11 +664,11 @@ model Expense {
   updatedAt     DateTime      @updatedAt
   cancelledAt   DateTime?
 
-  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site        Site        @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  building    Building?   @relation(fields: [buildingId], references: [id], onDelete: Restrict)
-  expenseType ExpenseType @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
-  supplier    Supplier?   @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site            Site             @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building        Building?        @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  expenseType     ExpenseType      @relation(fields: [expenseTypeId], references: [id], onDelete: Restrict)
+  supplier        Supplier?        @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   bankTransaction BankTransaction?
 
   @@index([tenantId, status])
@@ -657,7 +746,7 @@ model BankAccount {
   accountNumber     String?
   branchName        String?
   currency          String             @default("TRY")
-  openingBalance    Decimal            @db.Decimal(12, 2) @default(0)
+  openingBalance    Decimal            @default(0) @db.Decimal(12, 2)
   currentBalance    Decimal?           @db.Decimal(12, 2)
   isActive          Boolean            @default(true)
   connectionType    BankConnectionType @default(MANUAL)
@@ -668,10 +757,10 @@ model BankAccount {
   updatedAt         DateTime           @updatedAt
   deletedAt         DateTime?
 
-  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site         Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  transactions BankTransaction[]
-  matchingRules BankMatchingRule[]
+  tenant                 Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site                   Site                        @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  transactions           BankTransaction[]
+  matchingRules          BankMatchingRule[]
   columnMappingTemplates BankColumnMappingTemplate[]
 
   @@index([tenantId, deletedAt])
@@ -711,12 +800,12 @@ model BankTransaction {
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
-  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  bankAccount      BankAccount  @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
-  matchedApartment Apartment?   @relation("BankTxMatchedApartment", fields: [matchedApartmentId], references: [id], onDelete: SetNull)
-  matchedPerson    Person?      @relation("BankTxMatchedPerson", fields: [matchedPersonId], references: [id], onDelete: SetNull)
-  payment          Payment?     @relation(fields: [paymentId], references: [id], onDelete: SetNull)
-  expense          Expense?     @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  bankAccount      BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  matchedApartment Apartment?  @relation("BankTxMatchedApartment", fields: [matchedApartmentId], references: [id], onDelete: SetNull)
+  matchedPerson    Person?     @relation("BankTxMatchedPerson", fields: [matchedPersonId], references: [id], onDelete: SetNull)
+  payment          Payment?    @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  expense          Expense?    @relation(fields: [expenseId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, bankAccountId, importFingerprint])
   @@index([tenantId, matchStatus])
@@ -781,20 +870,20 @@ model BankMatchingRule {
 
 /// Site personeli (kapıcı, güvenlik vb.). User hesabı ile aynı şey değildir.
 model Employee {
-  id               String    @id @default(uuid())
-  tenantId         String
-  firstName        String
-  lastName         String
-  phone            String?
-  email            String?
-  address          String?
-  jobTitle         String
-  hireDate         DateTime?
-  terminationDate  DateTime?
-  isActive         Boolean   @default(true)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
+  id              String    @id @default(uuid())
+  tenantId        String
+  firstName       String
+  lastName        String
+  phone           String?
+  email           String?
+  address         String?
+  jobTitle        String
+  hireDate        DateTime?
+  terminationDate DateTime?
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
 
   tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   assignments     EmployeeAssignment[]
@@ -851,7 +940,7 @@ model Visitor {
   updatedAt  DateTime  @updatedAt
   deletedAt  DateTime?
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   visits Visit[]
 
   @@index([tenantId, deletedAt])
@@ -860,21 +949,21 @@ model Visitor {
 }
 
 model Visit {
-  id            String      @id @default(uuid())
-  tenantId      String
-  visitorId     String
-  apartmentId   String
-  hostPersonId  String?
-  purpose       String?
-  vehiclePlate  String?
-  expectedAt    DateTime?
-  checkInAt     DateTime
-  checkOutAt    DateTime?
-  status        VisitStatus @default(INSIDE)
-  note          String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  cancelledAt   DateTime?
+  id           String      @id @default(uuid())
+  tenantId     String
+  visitorId    String
+  apartmentId  String
+  hostPersonId String?
+  purpose      String?
+  vehiclePlate String?
+  expectedAt   DateTime?
+  checkInAt    DateTime
+  checkOutAt   DateTime?
+  status       VisitStatus @default(INSIDE)
+  note         String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  cancelledAt  DateTime?
 
   tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   visitor    Visitor   @relation(fields: [visitorId], references: [id], onDelete: Restrict)
@@ -927,36 +1016,36 @@ model AssetCategory {
 
 /// Siteye ait demirbaş kaydı.
 model Asset {
-  id               String      @id @default(uuid())
-  tenantId         String
-  siteId           String
-  buildingId       String?
-  apartmentId      String?
-  assetCategoryId  String?
-  name             String
-  code             String?
-  quantity         Int         @default(1)
-  unit             String?
-  purchaseDate     DateTime?
-  purchasePrice    Decimal?    @db.Decimal(12, 2)
-  currentValue     Decimal?    @db.Decimal(12, 2)
-  supplierName     String?
-  location         String?
-  brand            String?
-  model            String?
-  serialNumber     String?
-  warrantyEndDate  DateTime?
-  status           AssetStatus @default(ACTIVE)
-  description      String?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
-  deletedAt        DateTime?
+  id              String      @id @default(uuid())
+  tenantId        String
+  siteId          String
+  buildingId      String?
+  apartmentId     String?
+  assetCategoryId String?
+  name            String
+  code            String?
+  quantity        Int         @default(1)
+  unit            String?
+  purchaseDate    DateTime?
+  purchasePrice   Decimal?    @db.Decimal(12, 2)
+  currentValue    Decimal?    @db.Decimal(12, 2)
+  supplierName    String?
+  location        String?
+  brand           String?
+  model           String?
+  serialNumber    String?
+  warrantyEndDate DateTime?
+  status          AssetStatus @default(ACTIVE)
+  description     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  deletedAt       DateTime?
 
-  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site      Site           @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  building  Building?      @relation(fields: [buildingId], references: [id], onDelete: Restrict)
-  apartment Apartment?     @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
-  category  AssetCategory? @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site         Site               @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  building     Building?          @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+  apartment    Apartment?         @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  category     AssetCategory?     @relation(fields: [assetCategoryId], references: [id], onDelete: SetNull)
   movements    AssetMovement[]
   maintenances AssetMaintenance[]
 
@@ -1047,27 +1136,27 @@ enum AnnouncementStatus {
 
 /// Site duyurusu. İletişim kanalları (WhatsApp/SMS/e-posta) ayrı fazda eklenecek.
 model Announcement {
-  id              String                    @id @default(uuid())
+  id              String                   @id @default(uuid())
   tenantId        String
   siteId          String
   title           String
   content         String
   audienceType    AnnouncementAudienceType
-  priority        AnnouncementPriority      @default(NORMAL)
-  status          AnnouncementStatus        @default(DRAFT)
+  priority        AnnouncementPriority     @default(NORMAL)
+  status          AnnouncementStatus       @default(DRAFT)
   publishAt       DateTime?
   publishedAt     DateTime?
   expiresAt       DateTime?
   createdByUserId String?
-  createdAt       DateTime                  @default(now())
-  updatedAt       DateTime                  @updatedAt
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
   deletedAt       DateTime?
 
-  tenant          Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site            Site                     @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  createdByUser   User?                    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
-  buildings       AnnouncementBuilding[]
-  apartments      AnnouncementApartment[]
+  tenant        Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site          Site                    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  createdByUser User?                   @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  buildings     AnnouncementBuilding[]
+  apartments    AnnouncementApartment[]
 
   @@index([tenantId, siteId, deletedAt])
   @@index([siteId, status, deletedAt])
@@ -1153,24 +1242,24 @@ model FeedbackCategory {
 
 /// Siteye ait bilgi / öneri / talep / şikâyet kaydı.
 model FeedbackRecord {
-  id           String           @id @default(uuid())
-  tenantId     String
-  siteId       String
-  buildingId   String?
-  apartmentId  String?
-  personId     String?
-  employeeId   String?
-  categoryId   String?
-  type         FeedbackType
-  title        String
-  description  String
-  priority     FeedbackPriority @default(NORMAL)
-  status       FeedbackStatus   @default(OPEN)
-  resolution   String?
-  resolvedAt   DateTime?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  deletedAt    DateTime?
+  id          String           @id @default(uuid())
+  tenantId    String
+  siteId      String
+  buildingId  String?
+  apartmentId String?
+  personId    String?
+  employeeId  String?
+  categoryId  String?
+  type        FeedbackType
+  title       String
+  description String
+  priority    FeedbackPriority @default(NORMAL)
+  status      FeedbackStatus   @default(OPEN)
+  resolution  String?
+  resolvedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
 
   tenant    Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   site      Site                    @relation(fields: [siteId], references: [id], onDelete: Restrict)
@@ -1194,14 +1283,14 @@ model FeedbackRecord {
 }
 
 model FeedbackStatusHistory {
-  id               String         @id @default(uuid())
+  id               String          @id @default(uuid())
   tenantId         String
   siteId           String
   feedbackRecordId String
   previousStatus   FeedbackStatus?
   newStatus        FeedbackStatus
   note             String?
-  createdAt        DateTime       @default(now())
+  createdAt        DateTime        @default(now())
 
   tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   site           Site           @relation(fields: [siteId], references: [id], onDelete: Restrict)
@@ -1250,23 +1339,23 @@ enum WhatsAppTemplateSource {
 
 /// Tenant seviyesinde WhatsApp Cloud API bağlantısı.
 model WhatsAppIntegration {
-  id                    String                   @id @default(uuid())
-  tenantId              String
-  wabaId                String
-  phoneNumberId         String
-  businessPhone         String?
-  displayPhoneNumber    String?
-  verifiedName          String?
-  accessTokenEncrypted  String
-  tokenLastFour         String?
-  apiVersion            String
-  isActive              Boolean                  @default(true)
-  connectionStatus      WhatsAppConnectionStatus @default(DISCONNECTED)
-  lastCheckedAt         DateTime?
-  lastError             String?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  deletedAt             DateTime?
+  id                   String                   @id @default(uuid())
+  tenantId             String
+  wabaId               String
+  phoneNumberId        String
+  businessPhone        String?
+  displayPhoneNumber   String?
+  verifiedName         String?
+  accessTokenEncrypted String
+  tokenLastFour        String?
+  apiVersion           String
+  isActive             Boolean                  @default(true)
+  connectionStatus     WhatsAppConnectionStatus @default(DISCONNECTED)
+  lastCheckedAt        DateTime?
+  lastError            String?
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  deletedAt            DateTime?
 
   tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   templates WhatsAppTemplate[]
@@ -1277,29 +1366,29 @@ model WhatsAppIntegration {
 
 /// Meta WhatsApp şablonu (tenant seviyesi, entegrasyon altında).
 model WhatsAppTemplate {
-  id                String                 @id @default(uuid())
-  tenantId          String
-  integrationId     String?
-  metaTemplateId    String?
-  name              String
-  displayName       String?
-  language          String
-  category          String?
-  status            WhatsAppTemplateStatus
-  source            WhatsAppTemplateSource @default(META_SYNC)
-  bodyText          String?
-  parameterMapping  Json?
-  libraryKey        String?
-  componentsJson    Json
-  lastSyncedAt      DateTime
-  submittedAt       DateTime?
-  rejectionReason   String?
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
-  isStale           Boolean                @default(false)
-  deletedAt         DateTime?
+  id               String                 @id @default(uuid())
+  tenantId         String
+  integrationId    String?
+  metaTemplateId   String?
+  name             String
+  displayName      String?
+  language         String
+  category         String?
+  status           WhatsAppTemplateStatus
+  source           WhatsAppTemplateSource @default(META_SYNC)
+  bodyText         String?
+  parameterMapping Json?
+  libraryKey       String?
+  componentsJson   Json
+  lastSyncedAt     DateTime
+  submittedAt      DateTime?
+  rejectionReason  String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  isStale          Boolean                @default(false)
+  deletedAt        DateTime?
 
-  tenant           Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   integration      WhatsAppIntegration? @relation(fields: [integrationId], references: [id], onDelete: Cascade)
   messageTemplates MessageTemplate[]
 
@@ -1343,9 +1432,9 @@ model CommunicationBatch {
   createdAt   DateTime       @default(now())
   completedAt DateTime?
 
-  tenant   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site     Site                    @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  messages CommunicationMessage[]
+  tenant          Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site            Site                          @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  messages        CommunicationMessage[]
   idempotencyKeys CommunicationIdempotencyKey[]
 
   @@index([tenantId, siteId, createdAt])
@@ -1355,7 +1444,7 @@ model CommunicationBatch {
 
 /// Tekil gönderim kaydı. Site-scoped.
 model CommunicationMessage {
-  id                String                      @id @default(uuid())
+  id                String                     @id @default(uuid())
   tenantId          String
   siteId            String
   batchId           String?
@@ -1365,20 +1454,20 @@ model CommunicationMessage {
   debtId            String?
   toPhone           String
   body              String
-  status            CommunicationMessageStatus  @default(PENDING)
+  status            CommunicationMessageStatus @default(PENDING)
   provider          String?
   providerMessageId String?
   errorMessage      String?
   sentAt            DateTime?
-  createdAt         DateTime                    @default(now())
-  updatedAt         DateTime                    @updatedAt
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
 
-  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  site      Site                 @relation(fields: [siteId], references: [id], onDelete: Restrict)
-  batch     CommunicationBatch?  @relation(fields: [batchId], references: [id], onDelete: SetNull)
-  person    Person?              @relation(fields: [personId], references: [id], onDelete: SetNull)
-  apartment Apartment?           @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
-  debt      ApartmentDebt?       @relation(fields: [debtId], references: [id], onDelete: SetNull)
+  tenant    Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site      Site                @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  batch     CommunicationBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  person    Person?             @relation(fields: [personId], references: [id], onDelete: SetNull)
+  apartment Apartment?          @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  debt      ApartmentDebt?      @relation(fields: [debtId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, siteId, createdAt])
   @@index([siteId, status, createdAt])
@@ -1406,36 +1495,74 @@ model CommunicationIdempotencyKey {
 
 enum SubscriptionPlan {
   DEMO
-  STANDARD
-  PROFESSIONAL
+  ANNUAL
 }
 
 enum SubscriptionStatus {
-  TRIAL
   ACTIVE
   EXPIRED
   SUSPENDED
   CANCELLED
 }
 
-/// Tenant başına tek güncel abonelik. Ödeme sağlayıcısı bu fazda yok.
+/// Tenant başına tek güncel organizasyon lisansı. Ödeme/otomatik yenileme yok.
 model Subscription {
-  id           String             @id @default(uuid())
-  tenantId     String             @unique
-  plan         SubscriptionPlan   @default(DEMO)
-  status       SubscriptionStatus @default(TRIAL)
-  startsAt     DateTime
-  endsAt       DateTime
-  trialEndsAt  DateTime?
-  cancelledAt  DateTime?
-  note         String?
-  createdAt    DateTime           @default(now())
-  updatedAt    DateTime           @updatedAt
+  id                            String             @id @default(uuid())
+  tenantId                      String             @unique
+  plan                          SubscriptionPlan   @default(DEMO)
+  status                        SubscriptionStatus @default(ACTIVE)
+  startsAt                      DateTime
+  endsAt                        DateTime
+  /// Fiyat snapshot — yıllık fiyat değişse eski kayıt korunur.
+  netPrice                      Decimal            @default(0) @db.Decimal(12, 2)
+  vatRate                       Decimal            @default(20) @db.Decimal(5, 2)
+  vatAmount                     Decimal            @default(0) @db.Decimal(12, 2)
+  grossPrice                    Decimal            @default(0) @db.Decimal(12, 2)
+  currency                      String             @default("TRY")
+  activatedAt                   DateTime?
+  suspendedAt                   DateTime?
+  cancelledAt                   DateTime?
+  note                          String?
+  version                       Int                @default(1)
+  createdByPlatformAdminId      String?
+  lastModifiedByPlatformAdminId String?
+  createdAt                     DateTime           @default(now())
+  updatedAt                     DateTime           @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdByPlatformAdmin      User?                 @relation("SubscriptionCreatedBy", fields: [createdByPlatformAdminId], references: [id], onDelete: SetNull)
+  lastModifiedByPlatformAdmin User?                 @relation("SubscriptionModifiedBy", fields: [lastModifiedByPlatformAdminId], references: [id], onDelete: SetNull)
+  history                     SubscriptionHistory[]
 
   @@index([status, endsAt])
+  @@index([plan, endsAt])
   @@map("subscriptions")
+}
+
+/// Lisans hareket geçmişi — UI’dan silinmez/değiştirilmez.
+model SubscriptionHistory {
+  id             String   @id @default(uuid())
+  subscriptionId String
+  tenantId       String
+  action         String
+  previousValues Json?
+  newValues      Json?
+  reason         String
+  performedById  String
+  netPrice       Decimal? @db.Decimal(12, 2)
+  vatRate        Decimal? @db.Decimal(5, 2)
+  vatAmount      Decimal? @db.Decimal(12, 2)
+  grossPrice     Decimal? @db.Decimal(12, 2)
+  currency       String?  @default("TRY")
+  createdAt      DateTime @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  performedBy  User         @relation(fields: [performedById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt])
+  @@index([subscriptionId, createdAt])
+  @@map("subscription_history")
 }
 
 /// Platform admin işlem kaydı. Silinmez.
@@ -1461,17 +1588,21 @@ model AdminAuditLog {
 
 /// Yalnız platform admin'e görünen support notu.
 model AdminNote {
-  id          String    @id @default(uuid())
-  tenantId    String
-  adminUserId String
-  content     String
-  createdAt   DateTime  @default(now())
-  deletedAt   DateTime?
+  id            String    @id @default(uuid())
+  tenantId      String
+  adminUserId   String
+  /// Opsiyonel: kullanıcı dosyasından yazılan notlar için hedef kullanıcı.
+  subjectUserId String?
+  content       String
+  createdAt     DateTime  @default(now())
+  deletedAt     DateTime?
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  adminUser User   @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adminUser   User   @relation(fields: [adminUserId], references: [id], onDelete: Restrict)
+  subjectUser User?  @relation("AdminNoteSubjectUser", fields: [subjectUserId], references: [id], onDelete: SetNull)
 
   @@index([tenantId, deletedAt, createdAt])
+  @@index([subjectUserId, createdAt])
   @@map("admin_notes")
 }
 
@@ -1501,8 +1632,8 @@ enum EmailDeliveryStatus {
 
 /// Merkezi platform SMTP bağlantısı. Tenant-scoped değildir; tek aktif kayıt beklenir.
 model PlatformEmailIntegration {
-  id                    String               @id @default(uuid())
-  providerType          String               @default("SMTP")
+  id                    String              @id @default(uuid())
+  providerType          String              @default("SMTP")
   senderName            String
   senderEmail           String
   replyToEmail          String?
@@ -1511,15 +1642,15 @@ model PlatformEmailIntegration {
   smtpSecurity          SmtpSecurity
   smtpUsername          String
   encryptedSmtpPassword String
-  isActive              Boolean              @default(true)
-  status                PlatformEmailStatus  @default(UNCONFIGURED)
+  isActive              Boolean             @default(true)
+  status                PlatformEmailStatus @default(UNCONFIGURED)
   lastTestedAt          DateTime?
   lastSuccessfulAt      DateTime?
   lastErrorCode         String?
   lastErrorSummary      String?
   notificationEmail     String
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
   updatedByUserId       String?
 
   updatedByUser User? @relation(fields: [updatedByUserId], references: [id], onDelete: SetNull)
@@ -1529,23 +1660,23 @@ model PlatformEmailIntegration {
 
 /// İşlemsel e-posta teslimat kaydı. Gövde ve aktivasyon URL'si saklanmaz.
 model EmailDelivery {
-  id               String              @id @default(uuid())
-  type             EmailDeliveryType
-  recipientEmail   String
-  recipientName    String?
-  subject          String
-  status           EmailDeliveryStatus @default(PENDING)
+  id                String              @id @default(uuid())
+  type              EmailDeliveryType
+  recipientEmail    String
+  recipientName     String?
+  subject           String
+  status            EmailDeliveryStatus @default(PENDING)
   providerMessageId String?
-  attempts         Int                 @default(0)
-  lastAttemptAt    DateTime?
-  sentAt           DateTime?
-  safeErrorCode    String?
-  safeErrorSummary String?
-  relatedTenantId  String?
-  relatedUserId    String?
-  metadata         Json?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
+  attempts          Int                 @default(0)
+  lastAttemptAt     DateTime?
+  sentAt            DateTime?
+  safeErrorCode     String?
+  safeErrorSummary  String?
+  relatedTenantId   String?
+  relatedUserId     String?
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
   relatedTenant Tenant? @relation(fields: [relatedTenantId], references: [id], onDelete: SetNull)
   relatedUser   User?   @relation(fields: [relatedUserId], references: [id], onDelete: SetNull)
@@ -1572,5 +1703,3 @@ model UserActivationToken {
   @@index([expiresAt])
   @@map("user_activation_tokens")
 }
-
-

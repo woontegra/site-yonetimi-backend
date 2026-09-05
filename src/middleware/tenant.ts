@@ -3,8 +3,9 @@ import type { PermissionCode } from "../permissions/catalog";
 import { effectivePermissions } from "../permissions/catalog";
 import { prisma } from "../lib/prisma";
 import { HttpError } from "../utils/httpError";
+import { requireWritableLicense } from "./license";
 
-export async function requireTenant(req: Request, _res: Response, next: NextFunction): Promise<void> {
+export async function requireTenant(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     if (!req.auth) {
       throw new HttpError(401, "Oturum açmanız gerekiyor.");
@@ -51,7 +52,8 @@ export async function requireTenant(req: Request, _res: Response, next: NextFunc
     req.auth.allowedSiteIds = membership.allSites ? null : membership.siteAccesses.map((item) => item.siteId);
     req.auth.permissions = effectivePermissions(membership.role, membership.permissions);
     req.auth.isPlatformAdmin = Boolean(user.isPlatformAdmin);
-    next();
+
+    await requireWritableLicense(req, res, next);
   } catch (error) {
     next(error);
   }

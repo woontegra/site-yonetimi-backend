@@ -31,7 +31,12 @@ export const adminSiteListQuerySchema = adminPageQuerySchema.extend({
 });
 
 export const adminSubscriptionListQuerySchema = adminPageQuerySchema.extend({
-  status: z.enum(["TRIAL", "ACTIVE", "EXPIRED", "SUSPENDED", "CANCELLED"]).optional(),
+  status: z
+    .enum(["ACTIVE", "EXPIRED", "SUSPENDED", "CANCELLED", "EXPIRING", "NONE"])
+    .optional(),
+  plan: z.enum(["DEMO", "ANNUAL"]).optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });
 
 export const adminIntegrationListQuerySchema = adminPageQuerySchema.extend({
@@ -64,6 +69,8 @@ export const adminAuditListQuerySchema = adminPageQuerySchema.extend({
     .optional()
     .transform((v) => v || undefined),
   targetId: z.string().uuid().optional(),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
 });
 
 export const adminNoteSchema = z.object({
@@ -77,11 +84,21 @@ export const adminNoteSchema = z.object({
 export const adminExtendSchema = z.object({
   days: z.number().int().min(1).max(365).optional(),
   endsAt: z.coerce.date().optional(),
-  plan: z.enum(["DEMO", "STANDARD", "PROFESSIONAL"]).optional(),
+  plan: z.enum(["DEMO", "ANNUAL"]).optional(),
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500, "Gerekçe en fazla 500 karakter olabilir."),
 });
 
 export const adminTrialSchema = z.object({
   days: z.number().int().min(1).max(90).default(7),
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500),
 });
 
 export const adminDeleteTenantSchema = z.object({
@@ -93,11 +110,91 @@ export const adminDeleteTenantSchema = z.object({
 });
 
 export const adminPlanSchema = z.object({
-  plan: z.enum(["DEMO", "STANDARD", "PROFESSIONAL"]),
+  plan: z.enum(["DEMO", "ANNUAL"]),
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500),
+});
+
+export const adminLicenseReasonSchema = z.object({
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500),
+  expectedVersion: z.number().int().optional(),
+  expectedUpdatedAt: z.string().optional(),
+  netPrice: z.coerce.number().min(0).max(1_000_000).optional(),
+  paymentNote: z.enum(["PAID", "PENDING", "COMPLIMENTARY"]).optional(),
+  days: z.number().int().min(1).max(365).optional(),
+  endsAt: z.coerce.date().optional(),
+  startsAt: z.coerce.date().optional(),
 });
 
 export const adminEndsAtSchema = z.object({
   endsAt: z.coerce.date({ required_error: "Bitiş tarihi zorunludur." }),
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500),
+});
+
+export const adminSubscriptionStatusSchema = z.object({
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500),
+});
+
+export const adminUserUpdateSchema = z.object({
+  fullName: z
+    .string({ required_error: "Ad soyad zorunludur." })
+    .trim()
+    .min(2, "Ad soyad en az 2 karakter olmalıdır.")
+    .max(120, "Ad soyad en fazla 120 karakter olabilir."),
+});
+
+export const adminUserDeactivateSchema = z.object({
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500, "Gerekçe en fazla 500 karakter olabilir."),
+});
+
+export const adminUserAccessSchema = z.object({
+  membershipId: z.string().uuid("Geçersiz üyelik."),
+  role: z
+    .enum([
+      "SITE_YONETICISI",
+      "YONETIM_PERSONELI",
+      "MUHASEBE_PERSONELI",
+      "SINIRLI_YETKILI",
+      "ORGANIZASYON_SAHIBI",
+      "YONETICI",
+      "MUHASEBE",
+      "OPERASYON",
+      "GORUNTULEYICI",
+    ])
+    .optional(),
+  allSites: z.boolean().optional(),
+  siteIds: z.array(z.string().uuid()).max(200).optional(),
+});
+
+export const adminUserDeleteSchema = z.object({
+  reason: z
+    .string({ required_error: "Gerekçe zorunludur." })
+    .trim()
+    .min(5, "Gerekçe en az 5 karakter olmalıdır.")
+    .max(500),
+  confirmEmail: z
+    .string({ required_error: "E-posta onayı zorunludur." })
+    .trim()
+    .email("Geçerli bir e-posta girin."),
 });
 
 export const adminCreateTenantSchema = z
@@ -117,20 +214,15 @@ export const adminCreateTenantSchema = z
       .trim()
       .email("Geçerli bir e-posta girin.")
       .toLowerCase(),
-    plan: z.enum(["DEMO", "PROFESSIONAL"]).default("DEMO"),
+    plan: z.enum(["DEMO", "ANNUAL"]).default("DEMO"),
     trialDays: z.coerce.number().int().min(1).max(90).optional(),
-    licenseTerm: z.enum(["1m", "3m", "6m", "1y", "custom"]).optional(),
     endsAt: z.coerce.date().optional(),
+    startsAt: z.coerce.date().optional(),
+    netPrice: z.coerce.number().min(0).max(1_000_000).optional(),
   })
   .superRefine((data, ctx) => {
-    if (data.plan === "PROFESSIONAL" && (data.licenseTerm ?? "1y") === "custom") {
-      if (!data.endsAt) {
-        ctx.addIssue({ code: "custom", message: "Özel bitiş tarihi zorunludur.", path: ["endsAt"] });
-        return;
-      }
-      if (data.endsAt.getTime() <= Date.now()) {
-        ctx.addIssue({ code: "custom", message: "Bitiş tarihi geçmiş olamaz.", path: ["endsAt"] });
-      }
+    if (data.endsAt && data.endsAt.getTime() <= Date.now()) {
+      ctx.addIssue({ code: "custom", message: "Bitiş tarihi geçmiş olamaz.", path: ["endsAt"] });
     }
   });
 

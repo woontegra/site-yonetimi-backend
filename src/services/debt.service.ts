@@ -53,7 +53,7 @@ function personFullName(person: { firstName: string; lastName: string }) {
 
 function mapDebt(row: {
   id: string;
-  type: "DUES" | "MANUAL";
+  type: "DUES" | "MANUAL" | "INTEREST";
   title: string;
   originalAmount: Prisma.Decimal;
   remainingAmount: Prisma.Decimal;

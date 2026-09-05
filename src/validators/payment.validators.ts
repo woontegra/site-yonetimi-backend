@@ -27,6 +27,11 @@ const allocationSchema = z.object({
   amount: requiredMoney("Dağıtım tutarı zorunludur."),
 });
 
+const debtSnapshotSchema = z.object({
+  apartmentDebtId: z.string().uuid(),
+  remainingAmount: z.coerce.number(),
+});
+
 export const createPaymentSchema = z.object({
   apartmentId: z
     .string({ required_error: "Daire seçimi zorunludur." })
@@ -49,7 +54,16 @@ export const createPaymentSchema = z.object({
   referenceNo: optionalText(),
   description: optionalText(),
   allocations: z.array(allocationSchema).min(1, "En az bir borç dağılımı gerekli."),
+  confirmedWarningCodes: z.array(z.string()).optional(),
+  expectedRemainings: z.array(debtSnapshotSchema).optional(),
 });
+
+/** Ön izleme: allocations opsiyonel — yoksa FIFO plan üretilir. */
+export const previewPaymentSchema = createPaymentSchema
+  .omit({ allocations: true })
+  .extend({
+    allocations: z.array(allocationSchema).optional(),
+  });
 
 export const listPaymentsQuerySchema = z.object({
   search: z.string().trim().optional().transform((value) => value || undefined),
@@ -74,4 +88,5 @@ export const listPaymentsQuerySchema = z.object({
 });
 
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
+export type PreviewPaymentInput = z.infer<typeof previewPaymentSchema>;
 export type ListPaymentsQuery = z.infer<typeof listPaymentsQuerySchema>;

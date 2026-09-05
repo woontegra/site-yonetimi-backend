@@ -1,52 +1,61 @@
 import type { NextFunction, Request, Response } from "express";
-import { evaluateLicenseAccess, isLicenseEnforcementEnabled } from "../services/entitlement.service";
+import {
+  evaluateLicenseAccess,
+  licenseWriteForbiddenError,
+} from "../services/entitlement.service";
 import { HttpError } from "../utils/httpError";
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 /**
- * Gelecekteki lisans kilidi.
- *
- * - Kullanıcı aktifliği ve isPlatformAdmin her istekte veritabanından okunur.
- * - Platform admin tenant Subscription durumundan muaftır.
- * - LICENSE_ENFORCEMENT !== "true" iken normal kullanıcılar kilitlenmez.
- * - Admin router bu middleware'e bağlanmaz; requirePlatformAdmin yeterlidir.
- * - Bu middleware veri silmez.
- *
- * Bu fazda tenant route'larına takılmaz. Kilidi açmak için env + mount gerekir.
+ * Organizasyon lisansı yazma koruması.
+ * - Platform admin muaftır.
+ * - GET/HEAD/OPTIONS serbest.
+ * - EXPIRED/SUSPENDED/CANCELLED → 403 + LICENSE_* kodu (veri silinmez).
+ * requireTenant sonrasında çağrılmalıdır.
  */
-export async function requireValidLicense(
+export async function requireWritableLicense(
   req: Request,
   _res: Response,
   next: NextFunction,
 ): Promise<void> {
   try {
+    if (SAFE_METHODS.has(req.method.toUpperCase())) {
+      next();
+      return;
+    }
+
     const userId = req.auth?.userId;
+    const tenantId = req.auth?.tenantId ?? null;
     if (!userId) {
       throw new HttpError(401, "Oturum açmanız gerekiyor.");
     }
 
-    const { user, decision } = await evaluateLicenseAccess(userId, req.auth?.tenantId ?? null);
+    const { user, subscription, decision } = await evaluateLicenseAccess(userId, tenantId);
 
     if (!user || !user.isActive || decision.reason === "inactive_user") {
       throw new HttpError(401, "Oturum geçersiz.");
     }
 
-    if (user.isPlatformAdmin) {
-      req.auth = { ...req.auth!, isPlatformAdmin: true };
+    if (user.isPlatformAdmin || decision.writable) {
+      req.auth = { ...req.auth!, isPlatformAdmin: Boolean(user.isPlatformAdmin) };
       next();
       return;
     }
 
-    if (!isLicenseEnforcementEnabled()) {
-      next();
-      return;
+    if (subscription) {
+      throw licenseWriteForbiddenError(subscription);
     }
 
-    if (!decision.allowed) {
-      throw new HttpError(403, "Lisans süresi doldu veya abonelik geçersiz.");
-    }
-
-    next();
+    throw new HttpError(
+      403,
+      "Organizasyon lisansınızın süresi sona erdi. Verilerinizi görüntüleyebilir ancak yeni işlem oluşturamazsınız.",
+      "LICENSE_EXPIRED",
+    );
   } catch (error) {
     next(error);
   }
 }
+
+/** @deprecated Use requireWritableLicense */
+export const requireValidLicense = requireWritableLicense;

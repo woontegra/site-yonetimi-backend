@@ -1,9 +1,18 @@
 import { Prisma } from "@prisma/client";
+import {
+  assertPaymentCheckAllowed,
+  evaluatePaymentCancel,
+  evaluatePaymentCreate,
+} from "../finance";
 import { prisma } from "../lib/prisma";
 import { assertApartmentInSite } from "../utils/siteScope";
 import { HttpError } from "../utils/httpError";
 import { toMoneyString } from "../utils/money";
-import type { CreatePaymentInput, ListPaymentsQuery } from "../validators/payment.validators";
+import type {
+  CreatePaymentInput,
+  ListPaymentsQuery,
+  PreviewPaymentInput,
+} from "../validators/payment.validators";
 
 const paymentSelect = {
   id: true,
@@ -371,6 +380,29 @@ export class PaymentService {
     return payment.id;
   }
 
+  async previewCreate(tenantId: string, siteId: string, input: PreviewPaymentInput) {
+    await assertApartmentInSite(tenantId, siteId, input.apartmentId);
+    return evaluatePaymentCreate(tenantId, siteId, {
+      apartmentId: input.apartmentId,
+      personId: input.personId,
+      amount: input.amount,
+      paymentDate: input.paymentDate,
+      paymentMethod: input.paymentMethod,
+      referenceNo: input.referenceNo,
+      description: input.description,
+      allocations: input.allocations,
+      confirmedWarningCodes: input.confirmedWarningCodes,
+      expectedRemainings: input.expectedRemainings?.map((item) => ({
+        apartmentDebtId: item.apartmentDebtId,
+        remainingAmount: toMoneyString(item.remainingAmount),
+      })),
+    });
+  }
+
+  async previewCancel(tenantId: string, siteId: string, id: string) {
+    return evaluatePaymentCancel(tenantId, siteId, id);
+  }
+
   async create(tenantId: string, siteId: string, input: CreatePaymentInput, idempotencyKey?: string) {
     await assertApartmentInSite(tenantId, siteId, input.apartmentId);
 
@@ -383,8 +415,48 @@ export class PaymentService {
       }
     }
 
+    const preCheck = await evaluatePaymentCreate(tenantId, siteId, {
+      apartmentId: input.apartmentId,
+      personId: input.personId,
+      amount: input.amount,
+      paymentDate: input.paymentDate,
+      paymentMethod: input.paymentMethod,
+      referenceNo: input.referenceNo,
+      description: input.description,
+      allocations: input.allocations,
+      confirmedWarningCodes: input.confirmedWarningCodes,
+      expectedRemainings: input.expectedRemainings?.map((item) => ({
+        apartmentDebtId: item.apartmentDebtId,
+        remainingAmount: toMoneyString(item.remainingAmount),
+      })),
+    });
+    assertPaymentCheckAllowed(preCheck, input.confirmedWarningCodes);
+
     try {
       const paymentId = await prisma.$transaction(async (tx) => {
+        const liveCheck = await evaluatePaymentCreate(
+          tenantId,
+          siteId,
+          {
+            apartmentId: input.apartmentId,
+            personId: input.personId,
+            amount: input.amount,
+            paymentDate: input.paymentDate,
+            paymentMethod: input.paymentMethod,
+            referenceNo: input.referenceNo,
+            description: input.description,
+            allocations: input.allocations,
+            confirmedWarningCodes: input.confirmedWarningCodes,
+            expectedRemainings:
+              input.expectedRemainings?.map((item) => ({
+                apartmentDebtId: item.apartmentDebtId,
+                remainingAmount: toMoneyString(item.remainingAmount),
+              })) ?? preCheck.debtSnapshot,
+          },
+          { client: tx },
+        );
+        assertPaymentCheckAllowed(liveCheck, input.confirmedWarningCodes);
+
         const id = await this.createWithinTransaction(tx, tenantId, siteId, input);
         if (idempotencyKey) {
           await tx.paymentIdempotencyKey.create({
@@ -411,6 +483,9 @@ export class PaymentService {
   }
 
   async cancel(tenantId: string, siteId: string, id: string) {
+    const impact = await evaluatePaymentCancel(tenantId, siteId, id);
+    assertPaymentCheckAllowed(impact);
+
     const payment = await prisma.payment.findFirst({
       where: {
         id,
@@ -435,7 +510,7 @@ export class PaymentService {
     }
 
     if (payment.status === "CANCELLED") {
-      throw new HttpError(400, "Tahsilat zaten iptal edilmiş.");
+      throw new HttpError(400, "Tahsilat zaten iptal edilmiş.", "PAYMENT_ALREADY_CANCELLED");
     }
 
     await prisma.$transaction(async (tx) => {

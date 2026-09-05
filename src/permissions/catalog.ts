@@ -24,6 +24,8 @@ export const PERMISSIONS = [
   "expenses.cancel",
   "banks.view",
   "banks.manage",
+  "interest.view",
+  "interest.manage",
   "financeReports.view",
   "assets.view",
   "assets.manage",
@@ -96,6 +98,8 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { code: "expenses.cancel", label: "Gider iptal etme" },
       { code: "banks.view", label: "Banka hesaplarını ve hareketlerini görüntüleme" },
       { code: "banks.manage", label: "Banka işlemlerini yönetme" },
+      { code: "interest.view", label: "Faiz kararlarını görüntüleme" },
+      { code: "interest.manage", label: "Faiz kararlarını yönetme ve faiz uygulama" },
       { code: "financeReports.view", label: "Finans raporlarını görüntüleme" },
     ],
   },
@@ -206,6 +210,8 @@ const ACCOUNTING: PermissionCode[] = [
   "expenses.cancel",
   "banks.view",
   "banks.manage",
+  "interest.view",
+  "interest.manage",
   "financeReports.view",
 ];
 

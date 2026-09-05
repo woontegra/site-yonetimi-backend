@@ -2,7 +2,11 @@ import type { NextFunction, Request, Response } from "express";
 import { assertSiteActive, siteIdFrom } from "../middleware/site";
 import { paymentService } from "../services/payment.service";
 import { HttpError } from "../utils/httpError";
-import { createPaymentSchema, listPaymentsQuerySchema } from "../validators/payment.validators";
+import {
+  createPaymentSchema,
+  listPaymentsQuerySchema,
+  previewPaymentSchema,
+} from "../validators/payment.validators";
 
 function tenantIdFrom(req: Request): string {
   const tenantId = req.auth?.tenantId;
@@ -33,6 +37,39 @@ export async function getPayment(req: Request, res: Response, next: NextFunction
       String(req.params.id),
     );
     res.status(200).json({ payment });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function previewPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    assertSiteActive(req);
+    const parsed = previewPaymentSchema.safeParse(req.body);
+    if (!parsed.success) throw new HttpError(400, firstZodMessage(parsed.error));
+    const check = await paymentService.previewCreate(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      parsed.data,
+    );
+    res.status(200).json({ check });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function previewPaymentCancel(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const check = await paymentService.previewCancel(
+      tenantIdFrom(req),
+      siteIdFrom(req),
+      String(req.params.id),
+    );
+    res.status(200).json({ check });
   } catch (error) {
     next(error);
   }

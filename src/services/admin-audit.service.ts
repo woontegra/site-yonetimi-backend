@@ -66,12 +66,20 @@ export class AdminAuditService {
     search?: string;
     targetType?: string;
     targetId?: string;
+    from?: Date;
+    to?: Date;
   }) {
     const where: Prisma.AdminAuditLogWhereInput = {};
     if (query.tenantId) where.tenantId = query.tenantId;
     if (query.action) where.action = query.action;
     if (query.targetType) where.targetType = query.targetType;
     if (query.targetId) where.targetId = query.targetId;
+    if (query.from || query.to) {
+      where.createdAt = {
+        ...(query.from ? { gte: query.from } : {}),
+        ...(query.to ? { lte: query.to } : {}),
+      };
+    }
     const search = query.search?.trim();
     if (search) {
       where.OR = [

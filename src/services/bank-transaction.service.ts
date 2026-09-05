@@ -744,12 +744,70 @@ export class BankTransactionService {
         apartmentGroupStatus !== "MANUAL_REVIEW" &&
         apartmentGroupStatus !== "NO_OPEN_DEBT";
 
+      const financeIssues: Array<{
+        code: string;
+        severity: "INFO" | "WARNING" | "BLOCK";
+        title: string;
+        message: string;
+      }> = [];
+      if (row.paymentId) {
+        financeIssues.push({
+          code: "BANK_TX_ALREADY_PROCESSED",
+          severity: "BLOCK",
+          title: "Hareket işlenmiş",
+          message: "Bu banka hareketi daha önce tahsilata aktarıldı.",
+        });
+      } else if (row.direction !== "CREDIT") {
+        financeIssues.push({
+          code: "BANK_TX_NOT_CREDIT",
+          severity: "BLOCK",
+          title: "Giden hareket",
+          message: "Giden banka hareketi tahsilat olarak kaydedilemez.",
+        });
+      } else if (!row.matchedApartmentId) {
+        financeIssues.push({
+          code: "BANK_TX_NO_APARTMENT",
+          severity: "BLOCK",
+          title: "Daire eşleşmesi yok",
+          message: "Eşleşen daire seçilmeden tahsilat oluşturulamaz.",
+        });
+      } else if (row.status !== "ACTIVE") {
+        financeIssues.push({
+          code: "BANK_TX_INACTIVE",
+          severity: "BLOCK",
+          title: "Hareket aktif değil",
+          message: "İptal veya hariç tutulan hareket doğrudan tahsilata çevrilemez.",
+        });
+      } else if (apartmentGroupStatus === "NO_OPEN_DEBT") {
+        financeIssues.push({
+          code: "NO_OPEN_DEBT",
+          severity: "BLOCK",
+          title: "Açık borç yok",
+          message: "Eşleşen dairenin açık borcu bulunmuyor.",
+        });
+      } else if (apartmentGroupStatus === "OVERPAYMENT") {
+        financeIssues.push({
+          code: "OVERPAYMENT_NO_CREDIT",
+          severity: "BLOCK",
+          title: "Tutar açık borcu aşıyor",
+          message: "Banka hareketi tutarı açık borç toplamını aşıyor.",
+        });
+      } else if (eligible && allocations.length > 1) {
+        financeIssues.push({
+          code: "MULTI_PERIOD_ALLOCATION",
+          severity: "INFO",
+          title: "Birden fazla borca dağıtım",
+          message: `Ödeme ${allocations.length} açık borca dağıtılacaktır.`,
+        });
+      }
+
       items.push({
         id: row.id,
         eligible: Boolean(eligible),
         bulkSafe: Boolean(bulkSafe),
         risky: Boolean(eligible && meta.risky),
         warning,
+        financeIssues,
         amount: toMoneyString(row.amount),
         senderHint,
         description: row.description,
